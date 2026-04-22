@@ -34,11 +34,8 @@ CommandHandlerInterfaceOnlyClusters:
     - Laundry Washer Mode
     - Microwave Oven Control
     - Network Commissioning
-    - Operational State
-    - Oven Cavity Operational State
     - Oven Mode
     - RVC Clean Mode
-    - RVC Operational State
     - RVC Run Mode
     - Refrigerator And Temperature Controlled Cabinet Mode
     - Sample MEI
@@ -144,9 +141,12 @@ CodeDrivenClusters:
     - OTA Software Update Requestor
     - Occupancy Sensing
     - Operational Credentials
+    - Operational State
+    - Oven Cavity Operational State
     - Power Topology
     - Push AV Stream Transport
     - Relative Humidity Measurement
+    - RVC Operational State
     - Scenes Management
     - Software Diagnostics
     - Switch
