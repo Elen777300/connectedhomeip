@@ -1113,3 +1113,102 @@ TEST_F(TestDoorLockClusterStorage, GetUserResponseOnOccupiedAndEmptySlots)
     }
 }
 
+TEST_F(TestDoorLockClusterStorage, SetCredentialCreateReadDuplicate)
+{
+    // Create a user and then a PIN credential assigned to it.
+    Commands::SetUser::Type setUserRequest;
+    setUserRequest.userIndex      = 1;
+    setUserRequest.operationType  = DataOperationTypeEnum::kAdd;
+    setUserRequest.userName       = DataModel::Nullable<CharSpan>(CharSpan::fromCharString(""));
+    setUserRequest.userUniqueID   = DataModel::Nullable<uint32_t>(0);
+    setUserRequest.userStatus     = DataModel::Nullable<UserStatusEnum>(UserStatusEnum::kOccupiedEnabled);
+    setUserRequest.userType       = DataModel::Nullable<UserTypeEnum>(UserTypeEnum::kUnrestrictedUser);
+    setUserRequest.credentialRule = DataModel::Nullable<CredentialRuleEnum>(CredentialRuleEnum::kSingle);
+    {
+        auto setStatus = tester.Invoke(Commands::SetUser::Id, setUserRequest);
+        ASSERT_TRUE(setStatus.status.has_value());
+        if (setStatus.status.has_value())
+        {
+            ASSERT_TRUE(setStatus.status->IsSuccess());
+        }
+    }
+    tester.GetNextGeneratedEvent();
+
+    Commands::SetCredential::Type credentialRequest;
+    credentialRequest.credential.credentialType  = CredentialTypeEnum::kPin;
+    credentialRequest.credential.credentialIndex = 1;
+    static uint8_t pinData[]                     = { '4', '2', '4', '2' };
+    credentialRequest.credentialData             = ByteSpan(pinData);
+    credentialRequest.userIndex                  = DataModel::Nullable<uint16_t>(1);
+    credentialRequest.userStatus                 = DataModel::Nullable<UserStatusEnum>();
+    credentialRequest.userType                   = DataModel::Nullable<UserTypeEnum>();
+
+    auto createResult = tester.Invoke(Commands::SetCredential::Id, credentialRequest);
+    ASSERT_TRUE(createResult.IsSuccess());
+    ASSERT_TRUE(createResult.response.has_value());
+    if (createResult.response.has_value())
+    {
+        EXPECT_EQ(createResult.response->status, DlStatus::kSuccess);
+    }
+    ASSERT_TRUE(tester.GetNextGeneratedEvent().has_value()); // LockUserChange (pin add)
+
+    // Setting the SAME data at a different slot is a duplicate.
+    credentialRequest.credential.credentialIndex = 2;
+    auto duplicateResult                         = tester.Invoke(Commands::SetCredential::Id, credentialRequest);
+    ASSERT_TRUE(duplicateResult.IsSuccess());
+    ASSERT_TRUE(duplicateResult.response.has_value());
+    if (duplicateResult.response.has_value())
+    {
+        EXPECT_EQ(duplicateResult.response->status, DlStatus::kDuplicate);
+    }
+
+    // Out-of-range credential data length -> INVALID_FIELD in the response.
+    uint8_t longPin[]                            = { '1', '2', '3', '4', '5', '6', '7', '8', '9' };
+    credentialRequest.credential.credentialIndex = 2;
+    credentialRequest.credentialData             = ByteSpan(longPin);
+    auto tooLongResult                           = tester.Invoke(Commands::SetCredential::Id, credentialRequest);
+    ASSERT_TRUE(tooLongResult.IsSuccess());
+    ASSERT_TRUE(tooLongResult.response.has_value());
+    if (tooLongResult.response.has_value())
+    {
+        EXPECT_EQ(tooLongResult.response->status, DlStatus::kInvalidField);
+    }
+
+    // Occupied slot -> OCCUPIED in the response.
+    credentialRequest.credential.credentialIndex = 1;
+    credentialRequest.credentialData             = ByteSpan(pinData);
+    auto occupiedResult                          = tester.Invoke(Commands::SetCredential::Id, credentialRequest);
+    ASSERT_TRUE(occupiedResult.IsSuccess());
+    ASSERT_TRUE(occupiedResult.response.has_value());
+    if (occupiedResult.response.has_value())
+    {
+        EXPECT_EQ(occupiedResult.response->status, DlStatus::kOccupied);
+    }
+
+    // GetCredentialStatus for the occupied PIN.
+    Commands::GetCredentialStatus::Type statusRequest;
+    statusRequest.credential.credentialType  = CredentialTypeEnum::kPin;
+    statusRequest.credential.credentialIndex = 1;
+    auto statusResult                        = tester.Invoke(Commands::GetCredentialStatus::Id, statusRequest);
+    ASSERT_TRUE(statusResult.IsSuccess());
+    ASSERT_TRUE(statusResult.response.has_value());
+    if (statusResult.response.has_value())
+    {
+        EXPECT_TRUE(statusResult.response->credentialExists);
+        ASSERT_FALSE(statusResult.response->userIndex.IsNull());
+        EXPECT_EQ(statusResult.response->userIndex.Value(), 1u);
+    }
+
+    // Clear the credential: user loses its last credential and is gone too.
+    Commands::ClearCredential::Type clearRequest;
+    clearRequest.credential.SetNonNull(CredentialStruct{ CredentialTypeEnum::kPin, 1 });
+    {
+        auto clearResult = tester.Invoke(Commands::ClearCredential::Id, clearRequest);
+        ASSERT_TRUE(clearResult.status.has_value());
+        if (clearResult.status.has_value())
+        {
+            EXPECT_EQ(clearResult.status->GetStatusCode().GetStatus(), Protocols::InteractionModel::Status::Success);
+        }
+    }
+    EXPECT_EQ(mDelegate.OccupiedUsers(), 0u);
+}

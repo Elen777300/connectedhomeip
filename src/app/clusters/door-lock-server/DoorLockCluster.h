@@ -305,6 +305,14 @@ private:
                        const ConcreteCommandPath & path);
     void HandleClearUser(const DataModel::InvokeRequest & request, uint16_t userIndex, CommandHandler * handler,
                          const ConcreteCommandPath & path);
+    void HandleSetCredential(const DataModel::InvokeRequest & request, const Commands::SetCredential::DecodableType & commandData,
+                             CommandHandler * handler, const ConcreteCommandPath & path);
+    void HandleGetCredentialStatus(CredentialTypeEnum credentialType, uint16_t credentialIndex, CommandHandler * handler,
+                                   const ConcreteCommandPath & path);
+    void HandleClearCredential(const DataModel::InvokeRequest & request,
+                               const Commands::ClearCredential::DecodableType & commandData, CommandHandler * handler,
+                               const ConcreteCommandPath & path);
+
     // ---- Command helpers (ported from the ember implementation) -----------------
 
     /// True when the user management feature is enabled (also required for
@@ -324,12 +332,29 @@ private:
     bool UserIndexValid(uint16_t userIndex, uint16_t & maxNumberOfUsers) const;
     bool UserExists(uint16_t userIndex) const;
 
+    bool CredentialIndexValid(CredentialTypeEnum type, uint16_t credentialIndex, uint16_t & maxNumberOfCredentials) const;
+    chip::app::Clusters::DoorLock::DlStatus CredentialLengthWithinRange(CredentialTypeEnum type,
+                                                                        const ByteSpan & credentialData) const;
+    chip::app::Clusters::DoorLock::DlStatus AliroCredentialDataValid(CredentialTypeEnum type,
+                                                                     const ByteSpan & credentialData) const;
+    bool GetMaxNumberOfCredentials(CredentialTypeEnum credentialType, uint16_t & maxNumberOfCredentials) const;
+    uint16_t NumberOfCredentialsSupportedPerUserValue() const { return mNumberOfCredentialsSupportedPerUser; }
+
     bool FindOccupiedUserSlot(uint16_t startIndex, uint16_t & userIndex) const;
     bool FindUnoccupiedUserSlot(uint16_t & userIndex) const;
     bool FindUnoccupiedUserSlot(uint16_t startIndex, uint16_t & userIndex) const;
+    bool FindOccupiedCredentialSlot(CredentialTypeEnum credentialType, uint16_t startIndex, uint16_t & credentialIndex) const;
+    bool FindUnoccupiedCredentialSlot(CredentialTypeEnum credentialType, uint16_t startIndex, uint16_t & credentialIndex) const;
+    bool FindUserIndexByCredential(CredentialTypeEnum credentialType, uint16_t credentialIndex, uint16_t & userIndex) const;
+    bool FindUserIndexByCredential(CredentialTypeEnum credentialType, ByteSpan credentialData, uint16_t & userIndex,
+                                   uint16_t & credentialIndex, EmberAfPluginDoorLockUserInfo & userInfo) const;
+
+    bool CredentialTypeSupported(CredentialTypeEnum type) const;
     bool WeekDayIndexValid(uint8_t weekDayIndex) const;
     bool YearDayIndexValid(uint8_t yearDayIndex) const;
     bool HolidayIndexValid(uint8_t holidayIndex) const;
+    bool CountOccupiedCredentials(CredentialTypeEnum credentialType, size_t & occupiedCount) const;
+    LockDataTypeEnum CredentialTypeToLockDataType(CredentialTypeEnum credentialType) const;
     bool IsUserScheduleRestricted(const EmberAfPluginDoorLockUserInfo & user) const;
 
     chip::Protocols::InteractionModel::ClusterStatusCode
@@ -349,10 +374,38 @@ private:
     chip::Protocols::InteractionModel::Status ClearUser(FabricIndex modifierFabricId, NodeId sourceNodeId, uint16_t userIndex,
                                                         bool sendUserChangeEvent);
 
+    DlStatus CreateNewCredentialAndUser(FabricIndex creatorFabricIdx, NodeId sourceNodeId,
+                                        const DataModel::Nullable<UserStatusEnum> & userStatus,
+                                        const DataModel::Nullable<UserTypeEnum> & userType, const CredentialStruct & credential,
+                                        const ByteSpan & credentialData, uint16_t & createdUserIndex);
+    DlStatus CreateNewCredentialAndAddItToUser(FabricIndex modifierFabricIdx, uint16_t userIndex,
+                                               const CredentialStruct & credential, const ByteSpan & credentialData);
+    DlStatus AddCredentialToUser(FabricIndex modifierFabricIdx, uint16_t userIndex, const CredentialStruct & credential);
+    DlStatus ModifyCredentialForUser(FabricIndex modifierFabricIdx, uint16_t userIndex, const CredentialStruct & credential);
+    DlStatus CreateCredential(FabricIndex creatorFabricIdx, NodeId sourceNodeId, uint16_t credentialIndex,
+                              CredentialTypeEnum credentialType, const EmberAfPluginDoorLockCredentialInfo & existingCredential,
+                              const ByteSpan & credentialData, const DataModel::Nullable<uint16_t> & userIndex,
+                              const DataModel::Nullable<UserStatusEnum> & userStatus,
+                              const DataModel::Nullable<UserTypeEnum> & userType, uint16_t & createdUserIndex);
+    DlStatus ModifyProgrammingPIN(FabricIndex modifierFabricIndex, NodeId sourceNodeId, uint16_t credentialIndex,
+                                  CredentialTypeEnum credentialType, const EmberAfPluginDoorLockCredentialInfo & existingCredential,
+                                  const ByteSpan & credentialData);
+    DlStatus ModifyCredential(FabricIndex modifierFabricIndex, NodeId sourceNodeId, uint16_t credentialIndex,
+                              CredentialTypeEnum credentialType, const EmberAfPluginDoorLockCredentialInfo & existingCredential,
+                              const ByteSpan & credentialData, uint16_t userIndex,
+                              const DataModel::Nullable<UserStatusEnum> & userStatus,
+                              const DataModel::Nullable<UserTypeEnum> & userType);
+
+    chip::Protocols::InteractionModel::Status ClearCredential(FabricIndex modifier, NodeId sourceNodeId,
+                                                              CredentialTypeEnum credentialType, uint16_t credentialIndex,
+                                                              bool sendUserChangeEvent);
     chip::Protocols::InteractionModel::Status ClearCredentials(FabricIndex modifier, NodeId sourceNodeId);
     chip::Protocols::InteractionModel::Status ClearCredentials(FabricIndex modifier, NodeId sourceNodeId,
                                                                CredentialTypeEnum credentialType);
     bool ClearFabricFromUsers(FabricIndex fabricIndex) const;
+    bool ClearFabricFromCredentials(FabricIndex fabricIndex) const;
+    bool ClearFabricFromCredentials(CredentialTypeEnum credentialType, FabricIndex fabricToRemove) const;
+
     chip::app::Clusters::DoorLock::DlStatus ClearWeekDaySchedule(uint16_t userIndex, uint8_t weekDayIndex) const;
     DlStatus ClearWeekDaySchedules(uint16_t userIndex) const;
     DlStatus ClearSchedules(uint16_t userIndex) const;
@@ -364,6 +417,10 @@ private:
     void SendRemoteLockUserChange(LockDataTypeEnum dataType, DataOperationTypeEnum operation, NodeId nodeId,
                                   FabricIndex fabricIndex, uint16_t userIndex, uint16_t dataIndex) const;
 
+    /// Handles a fabric removal: unstamps the fabric from users and credentials
+    /// (so the records survive owned by "no fabric") and notifies the delegate.
+    bool HandleFabricRemoved(FabricIndex fabricIndex);
+
     /// Loads persistent attribute values from the attribute storage.
     void LoadPersistentAttributes(ServerClusterContext & context);
 
@@ -372,6 +429,12 @@ private:
 
     // ---- Response encoding helpers ------------------------------------------------
 
+    void SendSetCredentialResponse(CommandHandler * handler, const ConcreteCommandPath & path, DlStatus status, uint16_t userIndex,
+                                   uint16_t nextCredentialIndex) const;
+    void SendGetCredentialResponse(CommandHandler * handler, const ConcreteCommandPath & path, CredentialTypeEnum credentialType,
+                                   uint16_t credentialIndex, const DataModel::Nullable<uint16_t> & nextCredentialIndex,
+                                   uint16_t userIndexWithCredential, const EmberAfPluginDoorLockCredentialInfo * credentialInfo,
+                                   bool credentialExists) const;
     /// Shared implementation of LockDoor/UnlockDoor/UnlockWithTimeout/UnboltDoor:
     /// operating-mode gate, lockout window, credential checks, hardware actuation,
     /// LockOperation/LockOperationError events and auto-relock scheduling.
