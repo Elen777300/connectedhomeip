@@ -197,6 +197,21 @@ CHIP_ERROR DoorLockCluster::AcceptedCommands(const ConcreteClusterPath & path,
     static constexpr DataModel::AcceptedCommandEntry kUnboltCommand[] = {
         Commands::UnboltDoor::kMetadataEntry,
     };
+    static constexpr DataModel::AcceptedCommandEntry kWeekDayScheduleCommands[] = {
+        Commands::SetWeekDaySchedule::kMetadataEntry,
+        Commands::GetWeekDaySchedule::kMetadataEntry,
+        Commands::ClearWeekDaySchedule::kMetadataEntry,
+    };
+    static constexpr DataModel::AcceptedCommandEntry kYearDayScheduleCommands[] = {
+        Commands::SetYearDaySchedule::kMetadataEntry,
+        Commands::GetYearDaySchedule::kMetadataEntry,
+        Commands::ClearYearDaySchedule::kMetadataEntry,
+    };
+    static constexpr DataModel::AcceptedCommandEntry kHolidayScheduleCommands[] = {
+        Commands::SetHolidaySchedule::kMetadataEntry,
+        Commands::GetHolidaySchedule::kMetadataEntry,
+        Commands::ClearHolidaySchedule::kMetadataEntry,
+    };
     static constexpr DataModel::AcceptedCommandEntry kUserCommands[] = {
         Commands::SetUser::kMetadataEntry,
         Commands::GetUser::kMetadataEntry,
@@ -206,6 +221,10 @@ CHIP_ERROR DoorLockCluster::AcceptedCommands(const ConcreteClusterPath & path,
         Commands::SetCredential::kMetadataEntry,
         Commands::GetCredentialStatus::kMetadataEntry,
         Commands::ClearCredential::kMetadataEntry,
+    };
+    static constexpr DataModel::AcceptedCommandEntry kAliroCommands[] = {
+        Commands::SetAliroReaderConfig::kMetadataEntry,
+        Commands::ClearAliroReaderConfig::kMetadataEntry,
     };
     // clang-format on
 
@@ -217,6 +236,18 @@ CHIP_ERROR DoorLockCluster::AcceptedCommands(const ConcreteClusterPath & path,
     {
         ReturnErrorOnFailure(builder.AppendElements(Span(kUnboltCommand)));
     }
+    if (SupportsWeekDaySchedules())
+    {
+        ReturnErrorOnFailure(builder.AppendElements(Span(kWeekDayScheduleCommands)));
+    }
+    if (SupportsYearDaySchedules())
+    {
+        ReturnErrorOnFailure(builder.AppendElements(Span(kYearDayScheduleCommands)));
+    }
+    if (SupportsHolidaySchedules())
+    {
+        ReturnErrorOnFailure(builder.AppendElements(Span(kHolidayScheduleCommands)));
+    }
     if (SupportsUSR())
     {
         ReturnErrorOnFailure(builder.AppendElements(Span(kUserCommands)));
@@ -224,6 +255,10 @@ CHIP_ERROR DoorLockCluster::AcceptedCommands(const ConcreteClusterPath & path,
     if (anyCredentialFeature)
     {
         ReturnErrorOnFailure(builder.AppendElements(Span(kCredentialCommands)));
+    }
+    if (SupportsAliroProvisioning())
+    {
+        ReturnErrorOnFailure(builder.AppendElements(Span(kAliroCommands)));
     }
     return CHIP_NO_ERROR;
 }
@@ -604,6 +639,78 @@ std::optional<DataModel::ActionReturnStatus> DoorLockCluster::InvokeCommand(cons
         Commands::ClearCredential::DecodableType commandData;
         ReturnErrorOnFailure(commandData.Decode(input_arguments));
         HandleClearCredential(request, commandData, handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::SetWeekDaySchedule::Id: {
+        Commands::SetWeekDaySchedule::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        HandleSetWeekDaySchedule(request, commandData.weekDayIndex, commandData.userIndex, commandData.daysMask,
+                                 commandData.startHour, commandData.startMinute, commandData.endHour, commandData.endMinute,
+                                 handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::GetWeekDaySchedule::Id: {
+        Commands::GetWeekDaySchedule::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        HandleGetWeekDaySchedule(commandData.weekDayIndex, commandData.userIndex, handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::ClearWeekDaySchedule::Id: {
+        Commands::ClearWeekDaySchedule::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        HandleClearWeekDaySchedule(request, commandData.weekDayIndex, commandData.userIndex, handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::SetYearDaySchedule::Id: {
+        Commands::SetYearDaySchedule::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        HandleSetYearDaySchedule(request, commandData.yearDayIndex, commandData.userIndex, commandData.localStartTime,
+                                 commandData.localEndTime, handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::GetYearDaySchedule::Id: {
+        Commands::GetYearDaySchedule::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        HandleGetYearDaySchedule(commandData.yearDayIndex, commandData.userIndex, handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::ClearYearDaySchedule::Id: {
+        Commands::ClearYearDaySchedule::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        HandleClearYearDaySchedule(request, commandData.yearDayIndex, commandData.userIndex, handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::SetHolidaySchedule::Id: {
+        Commands::SetHolidaySchedule::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        HandleSetHolidaySchedule(commandData.holidayIndex, commandData.localStartTime, commandData.localEndTime,
+                                 commandData.operatingMode, handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::GetHolidaySchedule::Id: {
+        Commands::GetHolidaySchedule::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        HandleGetHolidaySchedule(commandData.holidayIndex, handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::ClearHolidaySchedule::Id: {
+        Commands::ClearHolidaySchedule::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        HandleClearHolidaySchedule(commandData.holidayIndex, handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::SetAliroReaderConfig::Id: {
+        Commands::SetAliroReaderConfig::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        HandleSetAliroReaderConfig(commandData.signingKey, commandData.verificationKey, commandData.groupIdentifier,
+                                   commandData.groupResolvingKey, handler, request.path);
+        return std::nullopt;
+    }
+    case Commands::ClearAliroReaderConfig::Id: {
+        Commands::ClearAliroReaderConfig::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        (void) commandData;
+        HandleClearAliroReaderConfig(handler, request.path);
         return std::nullopt;
     }
     default:
@@ -2743,6 +2850,58 @@ void DoorLockCluster::SendGetCredentialResponse(CommandHandler * handler, const 
     handler->AddResponse(path, response);
 }
 
+void DoorLockCluster::SendGetWeekDayScheduleResponse(CommandHandler * handler, const ConcreteCommandPath & path,
+                                                     uint8_t weekDayIndex, uint16_t userIndex, DlStatus status,
+                                                     DaysMaskMap daysMask, uint8_t startHour, uint8_t startMinute, uint8_t endHour,
+                                                     uint8_t endMinute) const
+{
+    Commands::GetWeekDayScheduleResponse::Type response;
+    response.weekDayIndex = weekDayIndex;
+    response.userIndex    = userIndex;
+    response.status       = status;
+    if (DlStatus::kSuccess == status)
+    {
+        response.daysMask    = Optional<chip::BitMask<DaysMaskMap>>(daysMask);
+        response.startHour   = Optional<uint8_t>(startHour);
+        response.startMinute = Optional<uint8_t>(startMinute);
+        response.endHour     = Optional<uint8_t>(endHour);
+        response.endMinute   = Optional<uint8_t>(endMinute);
+    }
+
+    handler->AddResponse(path, response);
+}
+
+void DoorLockCluster::SendGetYearDayScheduleResponse(CommandHandler * handler, const ConcreteCommandPath & path,
+                                                     uint8_t yearDayIndex, uint16_t userIndex, DlStatus status,
+                                                     uint32_t localStartTime, uint32_t localEndTime) const
+{
+    Commands::GetYearDayScheduleResponse::Type response;
+    response.yearDayIndex = yearDayIndex;
+    response.userIndex    = userIndex;
+    response.status       = status;
+    if (DlStatus::kSuccess == status)
+    {
+        response.localStartTime = chip::Optional<uint32_t>(localStartTime);
+        response.localEndTime   = chip::Optional<uint32_t>(localEndTime);
+    }
+
+    handler->AddResponse(path, response);
+}
+
+void DoorLockCluster::SendGetHolidayScheduleResponse(CommandHandler * handler, const ConcreteCommandPath & path,
+                                                     uint8_t holidayIndex, DlStatus status, uint32_t localStartTime,
+                                                     uint32_t localEndTime, OperatingModeEnum operatingMode) const
+{
+    auto response = Commands::GetHolidayScheduleResponse::Type{ holidayIndex, status };
+    if (DlStatus::kSuccess == status)
+    {
+        response.localStartTime = chip::Optional<uint32_t>(localStartTime);
+        response.localEndTime   = chip::Optional<uint32_t>(localEndTime);
+        response.operatingMode  = chip::Optional<OperatingModeEnum>(operatingMode);
+    }
+    handler->AddResponse(path, response);
+}
+
 // =============================================================================
 // User management command handlers
 // =============================================================================
@@ -3315,6 +3474,653 @@ void DoorLockCluster::HandleClearCredential(const DataModel::InvokeRequest & req
     handler->AddStatus(path,
                        ClearCredential(modifier, sourceNodeId, credentialType, credentialIndex,
                                        /* sendUserChangeEvent = */ true));
+}
+
+// =============================================================================
+// Schedule command handlers
+// =============================================================================
+
+void DoorLockCluster::HandleSetWeekDaySchedule(const DataModel::InvokeRequest & request, uint8_t weekDayIndex, uint16_t userIndex,
+                                               const BitMask<DaysMaskMap> & daysMask, uint8_t startHour, uint8_t startMinute,
+                                               uint8_t endHour, uint8_t endMinute, CommandHandler * handler,
+                                               const ConcreteCommandPath & path)
+{
+    if (!SupportsWeekDaySchedules())
+    {
+        ChipLogProgress(Zcl, "[SetWeekDaySchedule] Ignore command (not supported) [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    ChipLogProgress(Zcl, "[SetWeekDaySchedule] Incoming command [endpointId=%d]", mPath.mEndpointId);
+
+    auto fabricIdx = CommandFabricIndex(request);
+    if (kUndefinedFabricIndex == fabricIdx)
+    {
+        ChipLogError(Zcl, "[SetWeekDaySchedule] Unable to get the fabric IDX [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    auto sourceNodeId = CommandNodeId(request);
+    if (kUndefinedNodeId == sourceNodeId)
+    {
+        ChipLogError(Zcl, "[SetWeekDaySchedule] Unable to get the source node index [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    if (!WeekDayIndexValid(weekDayIndex) || !UserIndexValid(userIndex))
+    {
+        ChipLogProgress(
+            Zcl, "[SetWeekDaySchedule] Unable to add schedule - index out of range [endpointId=%d,weekDayIndex=%d,userIndex=%d]",
+            mPath.mEndpointId, weekDayIndex, userIndex);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    if (!UserExists(userIndex))
+    {
+        ChipLogProgress(Zcl,
+                        "[SetWeekDaySchedule] Unable to add schedule - user does not exist "
+                        "[endpointId=%d,weekDayIndex=%d,userIndex=%d]",
+                        mPath.mEndpointId, weekDayIndex, userIndex);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    uint8_t rawDaysMask = daysMask.Raw();
+
+    // Check that bits are within range
+    if ((0 == rawDaysMask) || (rawDaysMask & 0x80))
+    {
+        ChipLogProgress(Zcl,
+                        "[SetWeekDaySchedule] Unable to add schedule - daysMask is out of range "
+                        "[endpointId=%d,weekDayIndex=%d,userIndex=%d,daysMask=%x]",
+                        mPath.mEndpointId, weekDayIndex, userIndex, daysMask.Raw());
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    if (startHour > DOOR_LOCK_SCHEDULE_MAX_HOUR || startMinute > DOOR_LOCK_SCHEDULE_MAX_MINUTE ||
+        endHour > DOOR_LOCK_SCHEDULE_MAX_HOUR || endMinute > DOOR_LOCK_SCHEDULE_MAX_MINUTE)
+    {
+        ChipLogProgress(Zcl,
+                        "[SetWeekDaySchedule] Unable to add schedule - start time out of range "
+                        "[endpointId=%d,weekDayIndex=%d,userIndex=%d,startTime=\"%d:%d\",endTime=\"%d:%d\"]",
+                        mPath.mEndpointId, weekDayIndex, userIndex, startHour, startMinute, endHour, endMinute);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    if (startHour > endHour || (startHour == endHour && startMinute >= endMinute))
+    {
+        ChipLogProgress(Zcl,
+                        "[SetWeekDaySchedule] Unable to add schedule - invalid time "
+                        "[endpointId=%d,weekDayIndex=%d,userIndex=%d,startTime=\"%d:%d\",endTime=\"%d:%d\"]",
+                        mPath.mEndpointId, weekDayIndex, userIndex, startHour, startMinute, endHour, endMinute);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    auto status = mDelegate.SetSchedule(weekDayIndex, userIndex, DlScheduleStatus::kOccupied, daysMask, startHour, startMinute,
+                                        endHour, endMinute);
+    if (DlStatus::kSuccess != status)
+    {
+        ChipLogError(Zcl,
+                     "[SetWeekDaySchedule] Unable to add schedule - internal error "
+                     "[endpointId=%d,weekDayIndex=%d,userIndex=%d,status=%u]",
+                     mPath.mEndpointId, weekDayIndex, userIndex, to_underlying(status));
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    ChipLogProgress(Zcl,
+                    "[SetWeekDaySchedule] Successfully created new schedule "
+                    "[endpointId=%d,weekDayIndex=%d,userIndex=%d,daysMask=%d,startTime=\"%d:%d\",endTime=\"%d:%d\"]",
+                    mPath.mEndpointId, weekDayIndex, userIndex, daysMask.Raw(), startHour, startMinute, endHour, endMinute);
+
+    SendRemoteLockUserChange(LockDataTypeEnum::kWeekDaySchedule, DataOperationTypeEnum::kAdd, sourceNodeId, fabricIdx, userIndex,
+                             static_cast<uint16_t>(weekDayIndex));
+
+    handler->AddStatus(path, Status::Success);
+}
+
+void DoorLockCluster::HandleGetWeekDaySchedule(uint8_t weekDayIndex, uint16_t userIndex, CommandHandler * handler,
+                                               const ConcreteCommandPath & path)
+{
+    if (!SupportsWeekDaySchedules())
+    {
+        ChipLogProgress(Zcl, "[GetWeekDaySchedule] Ignore command (not supported) [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    ChipLogProgress(Zcl, "[GetWeekDaySchedule] Incoming command [endpointId=%d]", mPath.mEndpointId);
+
+    if (!WeekDayIndexValid(weekDayIndex) || !UserIndexValid(userIndex))
+    {
+        ChipLogProgress(
+            Zcl, "[GetWeekDaySchedule] Unable to get schedule - index out of range [endpointId=%d,weekDayIndex=%d,userIndex=%d]",
+            mPath.mEndpointId, weekDayIndex, userIndex);
+        SendGetWeekDayScheduleResponse(handler, path, weekDayIndex, userIndex, DlStatus::kInvalidField, DaysMaskMap(0), 0, 0, 0, 0);
+        return;
+    }
+
+    if (!UserExists(userIndex))
+    {
+        ChipLogProgress(Zcl, "[GetWeekDaySchedule] User does not exist [endpointId=%d,weekDayIndex=%d,userIndex=%d]",
+                        mPath.mEndpointId, weekDayIndex, userIndex);
+        SendGetWeekDayScheduleResponse(handler, path, weekDayIndex, userIndex, DlStatus::kNotFound, DaysMaskMap(0), 0, 0, 0, 0);
+        return;
+    }
+
+    EmberAfPluginDoorLockWeekDaySchedule scheduleInfo{ DaysMaskMap(0) };
+    auto status = mDelegate.GetSchedule(weekDayIndex, userIndex, scheduleInfo);
+    if (DlStatus::kSuccess != status)
+    {
+        SendGetWeekDayScheduleResponse(handler, path, weekDayIndex, userIndex, status, DaysMaskMap(0), 0, 0, 0, 0);
+        return;
+    }
+
+    SendGetWeekDayScheduleResponse(handler, path, weekDayIndex, userIndex, DlStatus::kSuccess, scheduleInfo.daysMask,
+                                   scheduleInfo.startHour, scheduleInfo.startMinute, scheduleInfo.endHour, scheduleInfo.endMinute);
+}
+
+void DoorLockCluster::HandleClearWeekDaySchedule(const DataModel::InvokeRequest & request, uint8_t weekDayIndex, uint16_t userIndex,
+                                                 CommandHandler * handler, const ConcreteCommandPath & path)
+{
+    if (!SupportsWeekDaySchedules())
+    {
+        ChipLogProgress(Zcl, "[ClearWeekDaySchedule] Ignore command (not supported) [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    ChipLogProgress(Zcl, "[ClearWeekDaySchedule] Incoming command [endpointId=%d]", mPath.mEndpointId);
+
+    auto fabricIdx = CommandFabricIndex(request);
+    if (kUndefinedFabricIndex == fabricIdx)
+    {
+        ChipLogError(Zcl, "[ClearWeekDaySchedule] Unable to get the fabric IDX [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    auto sourceNodeId = CommandNodeId(request);
+    if (kUndefinedNodeId == sourceNodeId)
+    {
+        ChipLogError(Zcl, "[ClearWeekDaySchedule] Unable to get the source node index [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    if (!UserIndexValid(userIndex) || (!WeekDayIndexValid(weekDayIndex) && DOOR_LOCK_ALL_SCHEDULES_INDEX != weekDayIndex))
+    {
+        ChipLogProgress(Zcl,
+                        "[ClearWeekDaySchedule] User or WeekDay index is out of range [endpointId=%d,weekDayIndex=%d,userIndex=%d]",
+                        mPath.mEndpointId, weekDayIndex, userIndex);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    if (!UserExists(userIndex))
+    {
+        ChipLogProgress(Zcl, "[ClearWeekDaySchedule] User does not exist [endpointId=%d,weekDayIndex=%d,userIndex=%d]",
+                        mPath.mEndpointId, weekDayIndex, userIndex);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    DlStatus clearStatus = DlStatus::kSuccess;
+    if (DOOR_LOCK_ALL_SCHEDULES_INDEX == weekDayIndex)
+    {
+        ChipLogProgress(Zcl, "[ClearWeekDaySchedule] Clearing all schedules for a single user [endpointId=%d,userIndex=%d]",
+                        mPath.mEndpointId, userIndex);
+        clearStatus = ClearWeekDaySchedules(userIndex);
+    }
+    else
+    {
+        ChipLogProgress(Zcl, "[ClearWeekDaySchedule] Clearing a single schedule [endpointId=%d,weekDayIndex=%d,userIndex=%d]",
+                        mPath.mEndpointId, weekDayIndex, userIndex);
+        clearStatus = ClearWeekDaySchedule(userIndex, weekDayIndex);
+    }
+
+    if (DlStatus::kSuccess != clearStatus)
+    {
+        ChipLogProgress(
+            Zcl, "[ClearWeekDaySchedule] Unable to clear the user schedules - app error [endpointId=%d,userIndex=%d,status=%u]",
+            mPath.mEndpointId, userIndex, to_underlying(clearStatus));
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    SendRemoteLockUserChange(LockDataTypeEnum::kWeekDaySchedule, DataOperationTypeEnum::kClear, sourceNodeId, fabricIdx, userIndex,
+                             static_cast<uint16_t>(weekDayIndex));
+
+    handler->AddStatus(path, Status::Success);
+}
+
+void DoorLockCluster::HandleSetYearDaySchedule(const DataModel::InvokeRequest & request, uint8_t yearDayIndex, uint16_t userIndex,
+                                               uint32_t localStartTime, uint32_t localEndTime, CommandHandler * handler,
+                                               const ConcreteCommandPath & path)
+{
+    if (!SupportsYearDaySchedules())
+    {
+        ChipLogProgress(Zcl, "[SetYearDaySchedule] Ignore command (not supported) [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    ChipLogProgress(Zcl, "[SetYearDaySchedule] incoming command [endpointId=%d]", mPath.mEndpointId);
+
+    auto fabricIdx = CommandFabricIndex(request);
+    if (kUndefinedFabricIndex == fabricIdx)
+    {
+        ChipLogError(Zcl, "[SetYearDaySchedule] Unable to get the fabric IDX [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    auto sourceNodeId = CommandNodeId(request);
+    if (kUndefinedNodeId == sourceNodeId)
+    {
+        ChipLogError(Zcl, "[SetYearDaySchedule] Unable to get the source node index [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    if (!YearDayIndexValid(yearDayIndex) || !UserIndexValid(userIndex))
+    {
+        ChipLogProgress(
+            Zcl, "[SetYearDaySchedule] Unable to add schedule - index out of range [endpointId=%d,yearDayIndex=%d,userIndex=%d]",
+            mPath.mEndpointId, yearDayIndex, userIndex);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    if (!UserExists(userIndex))
+    {
+        ChipLogProgress(Zcl,
+                        "[SetYearDaySchedule] Unable to add schedule - user does not exist "
+                        "[endpointId=%d,yearDayIndex=%d,userIndex=%d]",
+                        mPath.mEndpointId, yearDayIndex, userIndex);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    if (localEndTime <= localStartTime)
+    {
+        ChipLogProgress(Zcl,
+                        "[SetYearDaySchedule] Unable to add schedule - schedule ends earlier than starts"
+                        "[endpointId=%d,yearDayIndex=%d,userIndex=%d,localStartTime=%" PRIu32 ",localEndTime=%" PRIu32 "]",
+                        mPath.mEndpointId, yearDayIndex, userIndex, localStartTime, localEndTime);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    auto status = mDelegate.SetSchedule(yearDayIndex, userIndex, DlScheduleStatus::kOccupied, localStartTime, localEndTime);
+    if (DlStatus::kSuccess != status)
+    {
+        ChipLogError(Zcl,
+                     "[SetYearDaySchedule] Unable to add schedule - internal error "
+                     "[endpointId=%d,yearDayIndex=%d,userIndex=%d,status=%u]",
+                     mPath.mEndpointId, yearDayIndex, userIndex, to_underlying(status));
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    ChipLogProgress(Zcl,
+                    "[SetYearDaySchedule] Successfully created new schedule "
+                    "[endpointId=%d,yearDayIndex=%d,userIndex=%d,localStartTime=%" PRIu32 ",endTime=%" PRIu32 "]",
+                    mPath.mEndpointId, yearDayIndex, userIndex, localStartTime, localEndTime);
+
+    SendRemoteLockUserChange(LockDataTypeEnum::kYearDaySchedule, DataOperationTypeEnum::kAdd, sourceNodeId, fabricIdx, userIndex,
+                             static_cast<uint16_t>(yearDayIndex));
+
+    handler->AddStatus(path, Status::Success);
+}
+
+void DoorLockCluster::HandleGetYearDaySchedule(uint8_t yearDayIndex, uint16_t userIndex, CommandHandler * handler,
+                                               const ConcreteCommandPath & path)
+{
+    if (!SupportsYearDaySchedules())
+    {
+        ChipLogProgress(Zcl, "[GetYearDaySchedule] Ignore command (not supported) [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+    ChipLogProgress(Zcl, "[GetYearDaySchedule] incoming command [endpointId=%d]", mPath.mEndpointId);
+
+    if (!YearDayIndexValid(yearDayIndex) || !UserIndexValid(userIndex))
+    {
+        ChipLogProgress(
+            Zcl, "[GetYearDaySchedule] Unable to get schedule - index out of range [endpointId=%d,yearDayIndex=%d,userIndex=%d]",
+            mPath.mEndpointId, yearDayIndex, userIndex);
+        SendGetYearDayScheduleResponse(handler, path, yearDayIndex, userIndex, DlStatus::kInvalidField, 0, 0);
+        return;
+    }
+
+    if (!UserExists(userIndex))
+    {
+        ChipLogProgress(Zcl, "[GetYearDaySchedule] User does not exist [endpointId=%d,yearDayIndex=%d,userIndex=%d]",
+                        mPath.mEndpointId, yearDayIndex, userIndex);
+        SendGetYearDayScheduleResponse(handler, path, yearDayIndex, userIndex, DlStatus::kNotFound, 0, 0);
+        return;
+    }
+
+    EmberAfPluginDoorLockYearDaySchedule scheduleInfo{};
+    auto status = mDelegate.GetSchedule(yearDayIndex, userIndex, scheduleInfo);
+    if (DlStatus::kSuccess != status)
+    {
+        SendGetYearDayScheduleResponse(handler, path, yearDayIndex, userIndex, status, 0, 0);
+        return;
+    }
+
+    SendGetYearDayScheduleResponse(handler, path, yearDayIndex, userIndex, DlStatus::kSuccess, scheduleInfo.localStartTime,
+                                   scheduleInfo.localEndTime);
+}
+
+void DoorLockCluster::HandleClearYearDaySchedule(const DataModel::InvokeRequest & request, uint8_t yearDayIndex, uint16_t userIndex,
+                                                 CommandHandler * handler, const ConcreteCommandPath & path)
+{
+    if (!SupportsYearDaySchedules())
+    {
+        ChipLogProgress(Zcl, "[ClearYearDaySchedule] Ignore command (not supported) [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+    ChipLogProgress(Zcl, "[ClearYearDaySchedule] incoming command [endpointId=%d]", mPath.mEndpointId);
+
+    auto fabricIdx = CommandFabricIndex(request);
+    if (kUndefinedFabricIndex == fabricIdx)
+    {
+        ChipLogError(Zcl, "[ClearYearDaySchedule] Unable to get the fabric IDX [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    auto sourceNodeId = CommandNodeId(request);
+    if (kUndefinedNodeId == sourceNodeId)
+    {
+        ChipLogError(Zcl, "[ClearYearDaySchedule] Unable to get the source node index [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    if (!UserIndexValid(userIndex) || (!YearDayIndexValid(yearDayIndex) && DOOR_LOCK_ALL_SCHEDULES_INDEX != yearDayIndex))
+    {
+        ChipLogProgress(Zcl,
+                        "[ClearYearDaySchedule] User or YearDay index is out of range [endpointId=%d,yearDayIndex=%d,userIndex=%d]",
+                        mPath.mEndpointId, yearDayIndex, userIndex);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    if (!UserExists(userIndex))
+    {
+        ChipLogProgress(Zcl, "[ClearYearDaySchedule] User does not exist [endpointId=%d,yearDayIndex=%d,userIndex=%d]",
+                        mPath.mEndpointId, yearDayIndex, userIndex);
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    DlStatus clearStatus = DlStatus::kSuccess;
+    if (DOOR_LOCK_ALL_SCHEDULES_INDEX == yearDayIndex)
+    {
+        ChipLogProgress(Zcl, "[ClearYearDaySchedule] Clearing all schedules for a single user [endpointId=%d,userIndex=%d]",
+                        mPath.mEndpointId, userIndex);
+        clearStatus = ClearYearDaySchedules(userIndex);
+    }
+    else
+    {
+        ChipLogProgress(Zcl, "[ClearYearDaySchedule] Clearing a single schedule [endpointId=%d,yearDayIndex=%d,userIndex=%d]",
+                        mPath.mEndpointId, yearDayIndex, userIndex);
+        clearStatus = ClearYearDaySchedule(userIndex, yearDayIndex);
+    }
+
+    if (DlStatus::kSuccess != clearStatus)
+    {
+        ChipLogProgress(
+            Zcl, "[ClearYearDaySchedule] Unable to clear the user schedules - app error [endpointId=%d,userIndex=%d,status=%u]",
+            mPath.mEndpointId, userIndex, to_underlying(clearStatus));
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    SendRemoteLockUserChange(LockDataTypeEnum::kYearDaySchedule, DataOperationTypeEnum::kClear, sourceNodeId, fabricIdx, userIndex,
+                             static_cast<uint16_t>(yearDayIndex));
+
+    handler->AddStatus(path, Status::Success);
+}
+
+void DoorLockCluster::HandleSetHolidaySchedule(uint8_t holidayIndex, uint32_t localStartTime, uint32_t localEndTime,
+                                               OperatingModeEnum operatingMode, CommandHandler * handler,
+                                               const ConcreteCommandPath & path)
+{
+    if (!SupportsHolidaySchedules())
+    {
+        ChipLogProgress(Zcl, "[SetHolidaySchedule] Ignore command (not supported) [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    ChipLogProgress(Zcl, "[SetHolidaySchedule] incoming command [endpointId=%d]", mPath.mEndpointId);
+
+    if (!HolidayIndexValid(holidayIndex))
+    {
+        ChipLogProgress(Zcl, "[SetHolidaySchedule] Unable to add schedule - index out of range [endpointId=%d,scheduleIndex=%d]",
+                        mPath.mEndpointId, holidayIndex);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    if (localEndTime <= localStartTime)
+    {
+        ChipLogProgress(Zcl,
+                        "[SetHolidaySchedule] Unable to add schedule - schedule ends earlier than starts"
+                        "[endpointId=%d,scheduleIndex=%d,localStartTime=%" PRIu32 ",localEndTime=%" PRIu32 "]",
+                        mPath.mEndpointId, holidayIndex, localStartTime, localEndTime);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    if (operatingMode == OperatingModeEnum::kUnknownEnumValue)
+    {
+        ChipLogProgress(Zcl,
+                        "[SetHolidaySchedule] Unable to add schedule - operating mode is unknown"
+                        "[endpointId=%d,scheduleIndex=%d,localStartTime=%" PRIu32 ",localEndTime=%" PRIu32 ", operatingMode=%d]",
+                        mPath.mEndpointId, holidayIndex, localStartTime, localEndTime, to_underlying(operatingMode));
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    auto status = mDelegate.SetSchedule(holidayIndex, DlScheduleStatus::kOccupied, localStartTime, localEndTime, operatingMode);
+    if (DlStatus::kSuccess != status)
+    {
+        ChipLogError(Zcl, "[SetHolidaySchedule] Unable to add schedule - internal error [endpointId=%d,scheduleIndex=%d,status=%u]",
+                     mPath.mEndpointId, holidayIndex, to_underlying(status));
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+
+    ChipLogProgress(Zcl,
+                    "[SetHolidaySchedule] Successfully created new schedule "
+                    "[endpointId=%d,scheduleIndex=%d,localStartTime=%" PRIu32 ",endTime=%" PRIu32 ",operatingMode=%d]",
+                    mPath.mEndpointId, holidayIndex, localStartTime, localEndTime, to_underlying(operatingMode));
+
+    handler->AddStatus(path, Status::Success);
+}
+
+void DoorLockCluster::HandleGetHolidaySchedule(uint8_t holidayIndex, CommandHandler * handler, const ConcreteCommandPath & path)
+{
+    if (!SupportsHolidaySchedules())
+    {
+        ChipLogProgress(Zcl, "[GetHolidaySchedule] Ignore command (not supported) [endpointId=%d,scheduleIndex=%d]",
+                        mPath.mEndpointId, holidayIndex);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+    ChipLogProgress(Zcl, "[GetHolidaySchedule] incoming command [endpointId=%d,scheduleIndex=%d]", mPath.mEndpointId, holidayIndex);
+
+    if (!HolidayIndexValid(holidayIndex))
+    {
+        ChipLogProgress(Zcl, "[GetYearDaySchedule] Unable to get schedule - index out of range [endpointId=%d,scheduleIndex=%d]",
+                        mPath.mEndpointId, holidayIndex);
+        SendGetHolidayScheduleResponse(handler, path, holidayIndex, DlStatus::kInvalidField, 0, 0, OperatingModeEnum::kNormal);
+        return;
+    }
+
+    EmberAfPluginDoorLockHolidaySchedule scheduleInfo{};
+    auto status = mDelegate.GetSchedule(holidayIndex, scheduleInfo);
+    if (DlStatus::kSuccess != status)
+    {
+        SendGetHolidayScheduleResponse(handler, path, holidayIndex, status, 0, 0, OperatingModeEnum::kNormal);
+        return;
+    }
+    SendGetHolidayScheduleResponse(handler, path, holidayIndex, DlStatus::kSuccess, scheduleInfo.localStartTime,
+                                   scheduleInfo.localEndTime, scheduleInfo.operatingMode);
+}
+
+void DoorLockCluster::HandleClearHolidaySchedule(uint8_t holidayIndex, CommandHandler * handler, const ConcreteCommandPath & path)
+{
+    if (!SupportsHolidaySchedules())
+    {
+        ChipLogProgress(Zcl, "[ClearHolidaySchedule] Ignore command (not supported) [endpointId=%d]", mPath.mEndpointId);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+    ChipLogProgress(Zcl, "[ClearHolidaySchedule] incoming command [endpointId=%d,scheduleIndex=%d]", mPath.mEndpointId,
+                    holidayIndex);
+
+    if (!HolidayIndexValid(holidayIndex) && DOOR_LOCK_ALL_SCHEDULES_INDEX != holidayIndex)
+    {
+        ChipLogProgress(Zcl, "[ClearHolidaySchedule] Holiday index is out of range [endpointId=%d,scheduleIndex=%d]",
+                        mPath.mEndpointId, holidayIndex);
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    DlStatus clearStatus = DlStatus::kSuccess;
+    if (DOOR_LOCK_ALL_SCHEDULES_INDEX == holidayIndex)
+    {
+        ChipLogProgress(Zcl, "[ClearHolidaySchedule] Clearing all holiday schedules [endpointId=%d,scheduleIndex=%d]",
+                        mPath.mEndpointId, holidayIndex);
+        clearStatus = ClearHolidaySchedules();
+    }
+    else
+    {
+        ChipLogProgress(Zcl, "[ClearHolidaySchedule] Clearing a single schedule [endpointId=%d,scheduleIndex=%d]",
+                        mPath.mEndpointId, holidayIndex);
+        clearStatus = ClearHolidaySchedule(holidayIndex);
+    }
+
+    if (DlStatus::kSuccess != clearStatus)
+    {
+        ChipLogProgress(
+            Zcl, "[ClearHolidaySchedule] Unable to clear the user schedules - app error [endpointId=%d,scheduleIndex=%d,status=%u]",
+            mPath.mEndpointId, holidayIndex, to_underlying(clearStatus));
+        handler->AddStatus(path, Status::Failure);
+        return;
+    }
+    handler->AddStatus(path, Status::Success);
+}
+
+// =============================================================================
+// Aliro provisionning command handlers
+// =============================================================================
+
+void DoorLockCluster::HandleSetAliroReaderConfig(const ByteSpan & signingKey, const ByteSpan & verificationKey,
+                                                 const ByteSpan & groupIdentifier, const Optional<ByteSpan> & groupResolvingKey,
+                                                 CommandHandler * handler, const ConcreteCommandPath & path)
+{
+    ChipLogProgress(Zcl, "[SetAliroReaderConfig] Incoming command [endpointId=%d]", mPath.mEndpointId);
+
+    // The GroupResolvingKey must be provided if and only if the Aliro BLE UWB
+    // feature is supported. Otherwise, return INVALID_COMMAND
+    const bool supportsAliroBLEUWB = SupportsAliroBLEUWB();
+    if (supportsAliroBLEUWB != groupResolvingKey.HasValue())
+    {
+        if (supportsAliroBLEUWB)
+        {
+            ChipLogError(Zcl, "[SetAliroReaderConfig] Aliro BLE UWB supported but Group Resolving Key is not provided");
+        }
+        else
+        {
+            ChipLogError(Zcl, "[SetAliroReaderConfig] Aliro BLE UWB not supported but Group Resolving Key is provided");
+        }
+        handler->AddStatus(path, Status::InvalidCommand);
+        return;
+    }
+
+    // Check if the size of the signingKey, verificationKey, groupIdentifier, groupResolvingKey parameters conform to the spec.
+    // Return INVALID_COMMAND if not.
+    if (signingKey.size() != kAliroSigningKeySize || verificationKey.size() != kAliroReaderVerificationKeySize ||
+        groupIdentifier.size() != kAliroReaderGroupIdentifierSize ||
+        (groupResolvingKey.HasValue() && groupResolvingKey.Value().size() != kAliroGroupResolvingKeySize))
+    {
+        ChipLogProgress(Zcl, "[SetAliroReaderConfig] One or more parameters in the command do not meet the size constraint");
+        handler->AddStatus(path, Status::ConstraintError);
+        return;
+    }
+
+    uint8_t buffer[kAliroReaderVerificationKeySize];
+    MutableByteSpan readerVerificationKey(buffer);
+
+    CHIP_ERROR err = mDelegate.GetAliroReaderVerificationKey(readerVerificationKey);
+
+    // If Aliro reader verification key attribute was not read successfuly, return INVALID_IN_STATE. Or if the verification key
+    // was read and is not null (i.e. not empty), we can't set a new reader config without clearing the previous one, return
+    // INVALID_IN_STATE.
+    if (err != CHIP_NO_ERROR || !readerVerificationKey.empty())
+    {
+        ChipLogError(Zcl, "[SetAliroReaderConfig] Aliro reader verification key was not read or is not null.");
+        handler->AddStatus(path, Status::InvalidInState);
+        return;
+    }
+
+    err = mDelegate.SetAliroReaderConfig(signingKey, verificationKey, groupIdentifier, groupResolvingKey);
+    if (err != CHIP_NO_ERROR)
+    {
+        ChipLogProgress(Zcl, "[SetAliroReaderConfig] Unable to set aliro reader config [endpointId=%d]", mPath.mEndpointId);
+    }
+    else
+    {
+        // Various attributes changed; mark them dirty.
+        NotifyAttributeChanged(AliroReaderVerificationKey::Id);
+        NotifyAttributeChanged(AliroReaderGroupIdentifier::Id);
+        NotifyAttributeChanged(AliroGroupResolvingKey::Id);
+    }
+    handler->AddStatus(path, StatusIB(err).mStatus);
+}
+
+void DoorLockCluster::HandleClearAliroReaderConfig(CommandHandler * handler, const ConcreteCommandPath & path)
+{
+    ChipLogProgress(Zcl, "[ClearAliroReaderConfig] Incoming command [endpointId=%d]", mPath.mEndpointId);
+
+    uint8_t buffer[kAliroReaderVerificationKeySize];
+    MutableByteSpan readerVerificationKey(buffer);
+    CHIP_ERROR err = mDelegate.GetAliroReaderVerificationKey(readerVerificationKey);
+    if (err != CHIP_NO_ERROR && readerVerificationKey.empty())
+    {
+        // No reader config to start with. Just return without marking any attributes as dirty.
+        handler->AddStatus(path, Status::Success);
+        return;
+    }
+
+    err = mDelegate.ClearAliroReaderConfig();
+    if (err != CHIP_NO_ERROR)
+    {
+        ChipLogError(Zcl, "[ClearAliroReaderConfig] Unable to clear aliro reader config [endpointId=%d]", mPath.mEndpointId);
+    }
+    else
+    {
+        // Various attributes changed; mark them dirty.
+        NotifyAttributeChanged(AliroReaderVerificationKey::Id);
+        NotifyAttributeChanged(AliroReaderGroupIdentifier::Id);
+        NotifyAttributeChanged(AliroGroupResolvingKey::Id);
+    }
+    handler->AddStatus(path, StatusIB(err).mStatus);
 }
 
 // =============================================================================

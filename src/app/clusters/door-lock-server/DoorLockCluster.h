@@ -313,6 +313,32 @@ private:
                                const Commands::ClearCredential::DecodableType & commandData, CommandHandler * handler,
                                const ConcreteCommandPath & path);
 
+    void HandleSetWeekDaySchedule(const DataModel::InvokeRequest & request, uint8_t weekDayIndex, uint16_t userIndex,
+                                  const BitMask<DaysMaskMap> & daysMask, uint8_t startHour, uint8_t startMinute, uint8_t endHour,
+                                  uint8_t endMinute, CommandHandler * handler, const ConcreteCommandPath & path);
+    void HandleGetWeekDaySchedule(uint8_t weekDayIndex, uint16_t userIndex, CommandHandler * handler,
+                                  const ConcreteCommandPath & path);
+    void HandleClearWeekDaySchedule(const DataModel::InvokeRequest & request, uint8_t weekDayIndex, uint16_t userIndex,
+                                    CommandHandler * handler, const ConcreteCommandPath & path);
+
+    void HandleSetYearDaySchedule(const DataModel::InvokeRequest & request, uint8_t yearDayIndex, uint16_t userIndex,
+                                  uint32_t localStartTime, uint32_t localEndTime, CommandHandler * handler,
+                                  const ConcreteCommandPath & path);
+    void HandleGetYearDaySchedule(uint8_t yearDayIndex, uint16_t userIndex, CommandHandler * handler,
+                                  const ConcreteCommandPath & path);
+    void HandleClearYearDaySchedule(const DataModel::InvokeRequest & request, uint8_t yearDayIndex, uint16_t userIndex,
+                                    CommandHandler * handler, const ConcreteCommandPath & path);
+
+    void HandleSetHolidaySchedule(uint8_t holidayIndex, uint32_t localStartTime, uint32_t localEndTime,
+                                  OperatingModeEnum operatingMode, CommandHandler * handler, const ConcreteCommandPath & path);
+    void HandleGetHolidaySchedule(uint8_t holidayIndex, CommandHandler * handler, const ConcreteCommandPath & path);
+    void HandleClearHolidaySchedule(uint8_t holidayIndex, CommandHandler * handler, const ConcreteCommandPath & path);
+
+    void HandleSetAliroReaderConfig(const ByteSpan & signingKey, const ByteSpan & verificationKey, const ByteSpan & groupIdentifier,
+                                    const Optional<ByteSpan> & groupResolvingKey, CommandHandler * handler,
+                                    const ConcreteCommandPath & path);
+    void HandleClearAliroReaderConfig(CommandHandler * handler, const ConcreteCommandPath & path);
+
     // ---- Command helpers (ported from the ember implementation) -----------------
 
     /// True when the user management feature is enabled (also required for
@@ -435,6 +461,15 @@ private:
                                    uint16_t credentialIndex, const DataModel::Nullable<uint16_t> & nextCredentialIndex,
                                    uint16_t userIndexWithCredential, const EmberAfPluginDoorLockCredentialInfo * credentialInfo,
                                    bool credentialExists) const;
+    void SendGetWeekDayScheduleResponse(CommandHandler * handler, const ConcreteCommandPath & path, uint8_t weekDayIndex,
+                                        uint16_t userIndex, DlStatus status, DaysMaskMap daysMask, uint8_t startHour,
+                                        uint8_t startMinute, uint8_t endHour, uint8_t endMinute) const;
+    void SendGetYearDayScheduleResponse(CommandHandler * handler, const ConcreteCommandPath & path, uint8_t yearDayIndex,
+                                        uint16_t userIndex, DlStatus status, uint32_t localStartTime, uint32_t localEndTime) const;
+    void SendGetHolidayScheduleResponse(CommandHandler * handler, const ConcreteCommandPath & path, uint8_t holidayIndex,
+                                        DlStatus status, uint32_t localStartTime, uint32_t localEndTime,
+                                        OperatingModeEnum operatingMode) const;
+
     /// Shared implementation of LockDoor/UnlockDoor/UnlockWithTimeout/UnboltDoor:
     /// operating-mode gate, lockout window, credential checks, hardware actuation,
     /// LockOperation/LockOperationError events and auto-relock scheduling.
