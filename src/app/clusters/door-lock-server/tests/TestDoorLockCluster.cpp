@@ -1113,6 +1113,199 @@ TEST_F(TestDoorLockClusterStorage, GetUserResponseOnOccupiedAndEmptySlots)
     }
 }
 
+TEST_F(TestDoorLockClusterStorage, SetWeekDayScheduleFlow)
+{
+    // Create a user first (schedule commands require an existing user).
+    Commands::SetUser::Type setUserRequest;
+    setUserRequest.userIndex      = 1;
+    setUserRequest.operationType  = DataOperationTypeEnum::kAdd;
+    setUserRequest.userName       = DataModel::Nullable<CharSpan>(CharSpan::fromCharString(""));
+    setUserRequest.userUniqueID   = DataModel::Nullable<uint32_t>(0);
+    setUserRequest.userStatus     = DataModel::Nullable<UserStatusEnum>(UserStatusEnum::kOccupiedEnabled);
+    setUserRequest.userType       = DataModel::Nullable<UserTypeEnum>(UserTypeEnum::kUnrestrictedUser);
+    setUserRequest.credentialRule = DataModel::Nullable<CredentialRuleEnum>(CredentialRuleEnum::kSingle);
+    {
+        auto setStatus = tester.Invoke(Commands::SetUser::Id, setUserRequest);
+        ASSERT_TRUE(setStatus.status.has_value());
+        if (setStatus.status.has_value())
+        {
+            ASSERT_TRUE(setStatus.status->IsSuccess());
+        }
+    }
+    tester.GetNextGeneratedEvent();
+
+    // Set a weekday schedule.
+    Commands::SetWeekDaySchedule::Type scheduleRequest;
+    scheduleRequest.weekDayIndex = 1;
+    scheduleRequest.userIndex    = 1;
+    scheduleRequest.daysMask     = DaysMaskMap(1 << 1);
+    scheduleRequest.startHour    = 12;
+    scheduleRequest.startMinute  = 0;
+    scheduleRequest.endHour      = 13;
+    scheduleRequest.endMinute    = 30;
+
+    auto setStatus = tester.Invoke(Commands::SetWeekDaySchedule::Id, scheduleRequest);
+    ASSERT_TRUE(setStatus.status.has_value());
+    if (setStatus.status.has_value())
+    {
+        EXPECT_EQ(setStatus.status->GetStatusCode().GetStatus(), Protocols::InteractionModel::Status::Success);
+    }
+    ASSERT_TRUE(tester.GetNextGeneratedEvent().has_value()); // LockUserChange (weekday add)
+
+    // Read it back.
+    Commands::GetWeekDaySchedule::Type getRequest;
+    getRequest.weekDayIndex = 1;
+    getRequest.userIndex    = 1;
+    auto getResult          = tester.Invoke(Commands::GetWeekDaySchedule::Id, getRequest);
+    ASSERT_TRUE(getResult.IsSuccess());
+    ASSERT_TRUE(getResult.response.has_value());
+    if (getResult.response.has_value())
+    {
+        EXPECT_EQ(getResult.response->weekDayIndex, 1u);
+        EXPECT_EQ(getResult.response->userIndex, 1u);
+        EXPECT_EQ(getResult.response->status, DlStatus::kSuccess);
+        ASSERT_TRUE(getResult.response->daysMask.HasValue());
+        EXPECT_EQ(getResult.response->daysMask.Value().Raw(), (1 << 1));
+    }
+
+    // Out-of-range daysMask bit 0x80 -> InvalidCommand.
+    scheduleRequest.daysMask = DaysMaskMap(0x80);
+    auto invalidDaysMask     = tester.Invoke(Commands::SetWeekDaySchedule::Id, scheduleRequest);
+    ASSERT_TRUE(invalidDaysMask.status.has_value());
+    if (invalidDaysMask.status.has_value())
+    {
+        EXPECT_EQ(invalidDaysMask.status->GetStatusCode().GetStatus(), Protocols::InteractionModel::Status::InvalidCommand);
+    }
+
+    // end time <= start time -> InvalidCommand.
+    scheduleRequest.daysMask  = DaysMaskMap(1 << 1);
+    scheduleRequest.startHour = 15;
+    scheduleRequest.endHour   = 14;
+    auto invalidTimes         = tester.Invoke(Commands::SetWeekDaySchedule::Id, scheduleRequest);
+    ASSERT_TRUE(invalidTimes.status.has_value());
+    if (invalidTimes.status.has_value())
+    {
+        EXPECT_EQ(invalidTimes.status->GetStatusCode().GetStatus(), Protocols::InteractionModel::Status::InvalidCommand);
+    }
+
+    // Clear the schedule (wildcard = all weekday schedules of the user).
+    Commands::ClearWeekDaySchedule::Type clearRequest;
+    clearRequest.weekDayIndex = 0xFE;
+    clearRequest.userIndex    = 1;
+    auto clearResult          = tester.Invoke(Commands::ClearWeekDaySchedule::Id, clearRequest);
+    ASSERT_TRUE(clearResult.status.has_value());
+    if (clearResult.status.has_value())
+    {
+        EXPECT_EQ(clearResult.status->GetStatusCode().GetStatus(), Protocols::InteractionModel::Status::Success);
+    }
+    ASSERT_TRUE(tester.GetNextGeneratedEvent().has_value()); // LockUserChange (weekday clear)
+
+    // After clearing, the schedule reads back as NOT_FOUND.
+    getResult = tester.Invoke(Commands::GetWeekDaySchedule::Id, getRequest);
+    ASSERT_TRUE(getResult.IsSuccess());
+    ASSERT_TRUE(getResult.response.has_value());
+    if (getResult.response.has_value())
+    {
+        EXPECT_EQ(getResult.response->status, DlStatus::kNotFound);
+    }
+}
+
+TEST_F(TestDoorLockClusterStorage, SetYearDayScheduleValidation)
+{
+    Commands::SetUser::Type setUserRequest;
+    setUserRequest.userIndex      = 1;
+    setUserRequest.operationType  = DataOperationTypeEnum::kAdd;
+    setUserRequest.userName       = DataModel::Nullable<CharSpan>(CharSpan::fromCharString(""));
+    setUserRequest.userUniqueID   = DataModel::Nullable<uint32_t>(0);
+    setUserRequest.userStatus     = DataModel::Nullable<UserStatusEnum>(UserStatusEnum::kOccupiedEnabled);
+    setUserRequest.userType       = DataModel::Nullable<UserTypeEnum>(UserTypeEnum::kUnrestrictedUser);
+    setUserRequest.credentialRule = DataModel::Nullable<CredentialRuleEnum>(CredentialRuleEnum::kSingle);
+    {
+        auto setStatus = tester.Invoke(Commands::SetUser::Id, setUserRequest);
+        ASSERT_TRUE(setStatus.status.has_value());
+        if (setStatus.status.has_value())
+        {
+            ASSERT_TRUE(setStatus.status->IsSuccess());
+        }
+    }
+    tester.GetNextGeneratedEvent();
+
+    Commands::SetYearDaySchedule::Type scheduleRequest;
+    scheduleRequest.yearDayIndex   = 1;
+    scheduleRequest.userIndex      = 1;
+    scheduleRequest.localStartTime = 0;
+    scheduleRequest.localEndTime   = 100;
+
+    {
+        auto result = tester.Invoke(Commands::SetYearDaySchedule::Id, scheduleRequest);
+        ASSERT_TRUE(result.status.has_value());
+        if (result.status.has_value())
+        {
+            EXPECT_EQ(result.status->GetStatusCode().GetStatus(), Protocols::InteractionModel::Status::Success);
+        }
+    }
+    ASSERT_TRUE(tester.GetNextGeneratedEvent().has_value());
+
+    // localEndTime <= localStartTime -> InvalidCommand.
+    scheduleRequest.localStartTime = 100;
+    scheduleRequest.localEndTime   = 100;
+    {
+        auto result = tester.Invoke(Commands::SetYearDaySchedule::Id, scheduleRequest);
+        ASSERT_TRUE(result.status.has_value());
+        if (result.status.has_value())
+        {
+            EXPECT_EQ(result.status->GetStatusCode().GetStatus(), Protocols::InteractionModel::Status::InvalidCommand);
+        }
+    }
+}
+
+TEST_F(TestDoorLockClusterStorage, SetHolidayScheduleFlow)
+{
+    Commands::SetHolidaySchedule::Type request;
+    request.holidayIndex   = 1;
+    request.localStartTime = 0;
+    request.localEndTime   = 1000;
+    request.operatingMode  = OperatingModeEnum::kNormal;
+
+    {
+        auto result = tester.Invoke(Commands::SetHolidaySchedule::Id, request);
+        ASSERT_TRUE(result.status.has_value());
+        if (result.status.has_value())
+        {
+            EXPECT_EQ(result.status->GetStatusCode().GetStatus(), Protocols::InteractionModel::Status::Success);
+        }
+    }
+    // Holiday schedules are not user data: no LockUserChange event.
+    EXPECT_FALSE(tester.GetNextGeneratedEvent().has_value());
+
+    // Read it back.
+    Commands::GetHolidaySchedule::Type getRequest;
+    getRequest.holidayIndex = 1;
+    auto result             = tester.Invoke(Commands::GetHolidaySchedule::Id, getRequest);
+    ASSERT_TRUE(result.IsSuccess());
+    ASSERT_TRUE(result.response.has_value());
+    if (result.response.has_value())
+    {
+        EXPECT_EQ(result.response->holidayIndex, 1u);
+        EXPECT_EQ(result.response->status, DlStatus::kSuccess);
+        ASSERT_TRUE(result.response->localStartTime.HasValue());
+        EXPECT_EQ(result.response->localStartTime.Value(), 0u);
+    }
+
+    // Clear it.
+    Commands::ClearHolidaySchedule::Type clearRequest;
+    clearRequest.holidayIndex = 1;
+    {
+        auto clearResult = tester.Invoke(Commands::ClearHolidaySchedule::Id, clearRequest);
+        ASSERT_TRUE(clearResult.status.has_value());
+        if (clearResult.status.has_value())
+        {
+            EXPECT_EQ(clearResult.status->GetStatusCode().GetStatus(), Protocols::InteractionModel::Status::Success);
+        }
+    }
+    EXPECT_FALSE(tester.GetNextGeneratedEvent().has_value());
+}
+
 TEST_F(TestDoorLockClusterStorage, SetCredentialCreateReadDuplicate)
 {
     // Create a user and then a PIN credential assigned to it.
