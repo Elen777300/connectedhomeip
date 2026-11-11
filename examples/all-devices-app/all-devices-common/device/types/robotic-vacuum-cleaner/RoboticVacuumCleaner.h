@@ -17,10 +17,12 @@
 
 #pragma once
 
+#include <app/clusters/identify-server/IdentifyCluster.h>
 #include <app/clusters/mode-base-server/AppDelegate.h>
 #include <app/clusters/mode-base-server/ModeBaseCluster.h>
 #include <app/clusters/operational-state-server/RvcOperationalStateCluster.h>
 #include <device/api/SingleEndpoint.h>
+#include <lib/support/TimerDelegate.h>
 #include <platform/DiagnosticDataProvider.h>
 
 #include <cstdint>
@@ -40,6 +42,8 @@ public:
     {
         Clusters::OperationalState::OperationalStateCluster::Delegate & operationalStateDelegate;
         Clusters::ModeBase::AppDelegate & runModeDelegate;
+        Clusters::IdentifyDelegate & identifyDelegate;
+        TimerDelegate & timerDelegate;
         DeviceLayer::DiagnosticDataProvider & diagnosticDataProvider;
     };
 
@@ -51,6 +55,7 @@ public:
 
     Clusters::RvcOperationalState::RvcOperationalStateCluster & OperationalState() { return mOperationalStateCluster.Cluster(); }
     Clusters::ModeBaseCluster & RunMode() { return mRunModeCluster.Cluster(); }
+    Clusters::IdentifyCluster & IdentifyCluster() { return mIdentifyCluster.Cluster(); }
 
 protected:
     DeviceLayer::DiagnosticDataProvider & GetDiagnosticDataProvider() { return mDiagnosticDataProvider; }
@@ -75,6 +80,10 @@ private:
     Clusters::ModeBase::AppDelegate & mRunModeDelegate;
     LazyRegisteredServerCluster<Clusters::ModeBaseCluster> mRunModeCluster;
 
+    Clusters::IdentifyDelegate & mIdentifyDelegate;
+    LazyRegisteredServerCluster<Clusters::IdentifyCluster> mIdentifyCluster;
+
+    TimerDelegate & mTimerDelegate;
     DeviceLayer::DiagnosticDataProvider & mDiagnosticDataProvider;
 };
 

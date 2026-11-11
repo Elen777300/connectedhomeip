@@ -19,8 +19,8 @@
 
 #include <app/clusters/service-area-server/ServiceAreaCluster.h>
 #include <clusters/RvcOperationalState/Enums.h>
-#include <device/types/robotic-vacuum-cleaner/RoboticVacuumCleaner.h>
 #include <device/capabilities/service-area/impl/LoggingServiceAreaStorageDelegate.h>
+#include <device/types/robotic-vacuum-cleaner/RoboticVacuumCleaner.h>
 #include <lib/support/TimerDelegate.h>
 #include <oob-accessors/clusters/RvcOOBAccessor.h>
 #include <platform/DiagnosticDataProvider.h>
@@ -63,6 +63,27 @@ enum class PhysicalDockState : uint8_t
     kOnDockCharging,
 };
 
+class SimulatedRoboticVacuumCleaner;
+
+// ModeBase::AppDelegate can only be implemented once per class, but RunMode and CleanMode each
+// need their own instance. This adapter holds no state of its own; it just forwards into the
+// mode-specific method below, which shares the rest of the simulation's state directly.
+// It is a base so it is constructed before RoboticVacuumCleaner, which stores the reference.
+class RunModeDelegateAdapter : public Clusters::ModeBase::AppDelegate
+{
+public:
+    explicit RunModeDelegateAdapter(SimulatedRoboticVacuumCleaner & owner) : mOwner(owner) {}
+    CHIP_ERROR Init() override { return CHIP_NO_ERROR; }
+    CHIP_ERROR GetModeLabelByIndex(uint8_t modeIndex, MutableCharSpan & label) override;
+    CHIP_ERROR GetModeValueByIndex(uint8_t modeIndex, uint8_t & value) override;
+    CHIP_ERROR GetModeTagsByIndex(uint8_t modeIndex,
+                                  DataModel::List<Clusters::detail::Structs::ModeTagStruct::Type> & modeTags) override;
+    void HandleChangeToMode(uint8_t newMode, Clusters::ModeBase::Commands::ChangeToModeResponse::Type & response) override;
+
+private:
+    SimulatedRoboticVacuumCleaner & mOwner;
+};
+
 // Single "fake robot vacuum" that implements every mandatory RVC delegate interface itself, so
 // the simulation logic shares state directly as methods on one class instead of coordinating
 // several delegate objects through setters and callbacks.
@@ -71,7 +92,8 @@ enum class PhysicalDockState : uint8_t
 // on its own after kActivitySimulationDurationSec; once charging starts, it completes on its own
 // after kChargingSimulationDurationSec. The named-pipe entry points below remain available so
 // tests can still drive (or pre-empt) these transitions manually.
-class SimulatedRoboticVacuumCleaner : public RoboticVacuumCleaner,
+class SimulatedRoboticVacuumCleaner : public RunModeDelegateAdapter,
+                                      public RoboticVacuumCleaner,
                                       public Clusters::OperationalState::OperationalStateCluster::Delegate,
                                       public Clusters::ServiceArea::Delegate,
                                       public RvcSimulationDelegate,
@@ -81,6 +103,7 @@ public:
     struct Context
     {
         TimerDelegate & timerDelegate;
+        Clusters::IdentifyDelegate & identifyDelegate;
         DeviceLayer::DiagnosticDataProvider & diagnosticDataProvider;
     };
 
@@ -148,27 +171,9 @@ protected:
     void UnregisterOptionalClusters(CodeDrivenDataModelProvider & provider) override;
 
 private:
-    // ModeBase::AppDelegate can only be implemented once per class, but RunMode and CleanMode each
-    // need their own instance. These adapters hold no state of their own; they just forward into
-    // the mode-specific methods below, which share the rest of the simulation's state directly.
-    class RunModeAppDelegate : public Clusters::ModeBase::AppDelegate
-    {
-    public:
-        explicit RunModeAppDelegate(SimulatedRoboticVacuumCleaner & owner) : mOwner(owner) {}
-        CHIP_ERROR Init() override { return CHIP_NO_ERROR; }
-        CHIP_ERROR GetModeLabelByIndex(uint8_t modeIndex, MutableCharSpan & label) override;
-        CHIP_ERROR GetModeValueByIndex(uint8_t modeIndex, uint8_t & value) override;
-        CHIP_ERROR GetModeTagsByIndex(uint8_t modeIndex,
-                                      DataModel::List<Clusters::detail::Structs::ModeTagStruct::Type> & modeTags) override;
-        void HandleChangeToMode(uint8_t newMode, Clusters::ModeBase::Commands::ChangeToModeResponse::Type & response) override
-        {
-            mOwner.HandleRunModeChangeToMode(newMode, response);
-        }
+    friend class RunModeDelegateAdapter;
 
-    private:
-        SimulatedRoboticVacuumCleaner & mOwner;
-    };
-
+    // CleanMode adapter, forwarding into the mode-specific methods below.
     class CleanModeAppDelegate : public Clusters::ModeBase::AppDelegate
     {
     public:
@@ -210,7 +215,6 @@ private:
     TimerDelegate & mTimerDelegate;
     Clusters::ServiceArea::LoggingServiceAreaStorageDelegate mServiceAreaStorageDelegate;
     LazyRegisteredServerCluster<Clusters::ServiceArea::ServiceAreaCluster> mServiceAreaCluster;
-    RunModeAppDelegate mRunModeAppDelegate{ *this };
     CleanModeAppDelegate mCleanModeAppDelegate{ *this };
     LazyRegisteredServerCluster<Clusters::ModeBaseCluster> mCleanModeCluster;
 

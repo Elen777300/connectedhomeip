@@ -1325,6 +1325,7 @@ private:
                 VerifyOrDie(mContext.has_value());
                 return MakeDevice<SimulatedRoboticVacuumCleaner>(SimulatedRoboticVacuumCleaner::Context{
                     .timerDelegate          = mContext->timerDelegate,
+                    .identifyDelegate       = mContext->identifyDelegate,
                     .diagnosticDataProvider = mContext->diagnosticDataProvider,
                 });
             });

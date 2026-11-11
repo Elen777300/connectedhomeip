@@ -24,15 +24,20 @@ namespace chip::app {
 RoboticVacuumCleaner::RoboticVacuumCleaner(const Config & config) :
     SingleEndpoint(Span<const DataModel::DeviceTypeEntry>(&Device::Type::kRoboticVacuumCleaner, 1)),
     mOperationalStateDelegate(config.operationalStateDelegate), mRunModeDelegate(config.runModeDelegate),
+    mIdentifyDelegate(config.identifyDelegate), mTimerDelegate(config.timerDelegate),
     mDiagnosticDataProvider(config.diagnosticDataProvider)
 {}
 
 CHIP_ERROR RoboticVacuumCleaner::Register(EndpointId endpoint, CodeDrivenDataModelProvider & provider,
                                           EndpointComposition composition)
 {
+    VerifyOrReturnError(mEndpointId == kInvalidEndpointId, CHIP_ERROR_INCORRECT_STATE);
     DeviceRegistrationTransaction transaction(*this, provider);
 
     ReturnErrorOnFailure(RegisterDescriptor(endpoint, provider, composition));
+
+    mIdentifyCluster.Create(Clusters::IdentifyCluster::Config(endpoint, mTimerDelegate).WithDelegate(&mIdentifyDelegate));
+    ReturnErrorOnFailure(provider.AddCluster(mIdentifyCluster.Registration()));
 
     mOperationalStateCluster.Create(endpoint, mOperationalStateDelegate);
     ReturnErrorOnFailure(provider.AddCluster(mOperationalStateCluster.Registration()));
@@ -68,6 +73,11 @@ void RoboticVacuumCleaner::Unregister(CodeDrivenDataModelProvider & provider)
     {
         LogErrorOnFailure(provider.RemoveCluster(&mOperationalStateCluster.Cluster()));
         mOperationalStateCluster.Destroy();
+    }
+    if (mIdentifyCluster.IsConstructed())
+    {
+        LogErrorOnFailure(provider.RemoveCluster(&mIdentifyCluster.Cluster()));
+        mIdentifyCluster.Destroy();
     }
 }
 

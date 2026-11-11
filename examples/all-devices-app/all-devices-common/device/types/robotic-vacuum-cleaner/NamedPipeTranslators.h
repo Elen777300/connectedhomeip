@@ -21,9 +21,7 @@
 namespace chip::app {
 
 class RoboticVacuumCleaner;
-class SimulatedRoboticVacuumCleaner;
 
 void RegisterNamedPipeTranslators(RoboticVacuumCleaner & device, NamedPipe::Dispatcher & dispatcher);
-void RegisterNamedPipeTranslators(SimulatedRoboticVacuumCleaner & device, NamedPipe::Dispatcher & dispatcher);
 
 } // namespace chip::app
