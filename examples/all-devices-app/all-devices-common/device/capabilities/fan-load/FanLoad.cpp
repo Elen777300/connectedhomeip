@@ -27,8 +27,8 @@ namespace app {
 
 FanLoad::FanLoad(Span<const DataModel::DeviceTypeEntry> deviceTypes, Clusters::FanControl::Delegate & fanDelegate,
                  Clusters::OnOffDelegate * onOffDelegate, const Context & context) :
-    SingleEndpoint(deviceTypes),
-    mFanDelegate(fanDelegate), mOnOffDelegate(onOffDelegate), mTimerDelegate(context.timerDelegate), mContext(context)
+    SingleEndpoint(deviceTypes), mFanDelegate(fanDelegate), mOnOffDelegate(onOffDelegate), mTimerDelegate(context.timerDelegate),
+    mContext(context)
 {
     VerifyOrDie(mContext.includeOnOffCluster == (mOnOffDelegate != nullptr));
 }
@@ -68,11 +68,26 @@ CHIP_ERROR FanLoad::Register(chip::EndpointId endpoint, CodeDrivenDataModelProvi
 
     // Fan
     FanControlCluster::Config fanConfig(endpoint, mFanDelegate);
-    fanConfig.WithSpeedMax(10)
-        .WithStep()
-        .WithWindSupport(BitMask<FanControl::WindBitmap>(FanControl::WindBitmap::kSleepWind, FanControl::WindBitmap::kNaturalWind))
-        .WithRockSupport(BitMask<FanControl::RockBitmap>(FanControl::RockBitmap::kRockLeftRight))
-        .WithAirflowDirection();
+    if (mContext.fanSpeedMax != 0)
+    {
+        fanConfig.WithSpeedMax(mContext.fanSpeedMax);
+    }
+    if (mContext.fanStep)
+    {
+        fanConfig.WithStep();
+    }
+    if (mContext.fanWindSupport.HasAny())
+    {
+        fanConfig.WithWindSupport(mContext.fanWindSupport);
+    }
+    if (mContext.fanRockSupport.HasAny())
+    {
+        fanConfig.WithRockSupport(mContext.fanRockSupport);
+    }
+    if (mContext.fanAirflowDirection)
+    {
+        fanConfig.WithAirflowDirection();
+    }
     mFanControlCluster.Create(fanConfig);
     ReturnErrorOnFailure(provider.AddCluster(mFanControlCluster.Registration()));
 
