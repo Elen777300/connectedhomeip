@@ -59,7 +59,15 @@ public:
         Credentials::GroupDataProvider & groupDataProvider;
         FabricTable & fabricTable;
         TimerDelegate & timerDelegate;
-        bool includeOnOffCluster                                                = true;
+        bool includeOnOffCluster = true;
+
+        /// FanControl features and attributes the concrete device type advertises.
+        uint8_t fanSpeedMax = 0;
+        bool fanStep        = false;
+        BitMask<Clusters::FanControl::RockBitmap> fanRockSupport;
+        BitMask<Clusters::FanControl::WindBitmap> fanWindSupport;
+        bool fanAirflowDirection = false;
+
         Span<const Clusters::Globals::Structs::SemanticTagStruct::Type> tagList = {};
     };
 

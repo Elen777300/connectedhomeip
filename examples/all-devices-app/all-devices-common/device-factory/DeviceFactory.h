@@ -423,6 +423,12 @@ private:
                     .groupDataProvider = mContext->groupDataProvider,
                     .fabricTable       = mContext->fabricTable,
                     .timerDelegate     = mContext->timerDelegate,
+                    .fanSpeedMax       = 10,
+                    .fanStep           = true,
+                    .fanRockSupport = BitMask<Clusters::FanControl::RockBitmap>(Clusters::FanControl::RockBitmap::kRockLeftRight),
+                    .fanWindSupport = BitMask<Clusters::FanControl::WindBitmap>(Clusters::FanControl::WindBitmap::kSleepWind,
+                                                                                Clusters::FanControl::WindBitmap::kNaturalWind),
+                    .fanAirflowDirection = true,
                 });
             });
         }
@@ -996,6 +1002,12 @@ private:
                     .fabricTable         = mContext->fabricTable,
                     .timerDelegate       = mContext->timerDelegate,
                     .includeOnOffCluster = true,
+                    .fanSpeedMax         = 10,
+                    .fanStep             = true,
+                    .fanRockSupport = BitMask<Clusters::FanControl::RockBitmap>(Clusters::FanControl::RockBitmap::kRockLeftRight),
+                    .fanWindSupport = BitMask<Clusters::FanControl::WindBitmap>(Clusters::FanControl::WindBitmap::kSleepWind,
+                                                                                Clusters::FanControl::WindBitmap::kNaturalWind),
+                    .fanAirflowDirection = true,
                 });
             });
         }
@@ -1021,6 +1033,12 @@ private:
                     .fabricTable         = mContext->fabricTable,
                     .timerDelegate       = mContext->timerDelegate,
                     .includeOnOffCluster = true,
+                    .fanSpeedMax         = 10,
+                    .fanStep             = true,
+                    .fanRockSupport = BitMask<Clusters::FanControl::RockBitmap>(Clusters::FanControl::RockBitmap::kRockLeftRight),
+                    .fanWindSupport = BitMask<Clusters::FanControl::WindBitmap>(Clusters::FanControl::WindBitmap::kSleepWind,
+                                                                                Clusters::FanControl::WindBitmap::kNaturalWind),
+                    .fanAirflowDirection = true,
                     .tagList             = Span(&kFanTag, 1),
                 });
             });
@@ -1037,6 +1055,12 @@ private:
                     .fabricTable         = mContext->fabricTable,
                     .timerDelegate       = mContext->timerDelegate,
                     .includeOnOffCluster = false,
+                    .fanSpeedMax         = 10,
+                    .fanStep             = true,
+                    .fanRockSupport = BitMask<Clusters::FanControl::RockBitmap>(Clusters::FanControl::RockBitmap::kRockLeftRight),
+                    .fanWindSupport = BitMask<Clusters::FanControl::WindBitmap>(Clusters::FanControl::WindBitmap::kSleepWind,
+                                                                                Clusters::FanControl::WindBitmap::kNaturalWind),
+                    .fanAirflowDirection = true,
                     .tagList             = Span(&kFanNoOnOffTag, 1),
                 });
             });
