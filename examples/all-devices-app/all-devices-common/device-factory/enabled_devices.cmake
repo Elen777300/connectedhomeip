@@ -71,6 +71,7 @@ set(ALL_DEVICES_DEVICE_SOURCES
     "${ALL_DEVICES_COMMON_DIR}/device/types/extended-color-light/ExtendedColorLight.cpp"
     "${ALL_DEVICES_COMMON_DIR}/device/types/extended-color-light/impl/LoggingExtendedColorLight.cpp"
     "${ALL_DEVICES_COMMON_DIR}/device/types/extractor-hood/ExtractorHood.cpp"
+    "${ALL_DEVICES_COMMON_DIR}/device/types/extractor-hood/impl/LoggingExtractorHood.cpp"
     "${ALL_DEVICES_COMMON_DIR}/device/types/fan/Fan.cpp"
     "${ALL_DEVICES_COMMON_DIR}/device/types/fan/impl/LoggingFan.cpp"
     "${ALL_DEVICES_COMMON_DIR}/device/types/flow-sensor/FlowSensor.cpp"

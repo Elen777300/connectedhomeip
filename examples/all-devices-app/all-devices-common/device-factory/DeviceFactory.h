@@ -48,6 +48,7 @@
 #include <device/types/electrical-sensor/impl/SimulatedElectricalSensor.h>
 #include <device/types/extended-color-light/impl/LoggingExtendedColorLight.h>
 #include <device/types/extractor-hood/ExtractorHood.h>
+#include <device/types/extractor-hood/impl/LoggingExtractorHood.h>
 #include <device/types/fan/impl/LoggingFan.h>
 #include <device/types/flow-sensor/FlowSensor.h>
 #include <device/types/flow-sensor/impl/IncreasingFlowSensor.h>
@@ -1001,7 +1002,7 @@ private:
         {
             RegisterCreator("extractor-hood", [this]() {
                 VerifyOrDie(mContext.has_value());
-                return MakeDevice<ExtractorHood>(ExtractorHood::Context{
+                return MakeDevice<LoggingExtractorHood>(LoggingExtractorHood::Context{
                     .groupDataProvider   = mContext->groupDataProvider,
                     .fabricTable         = mContext->fabricTable,
                     .timerDelegate       = mContext->timerDelegate,
