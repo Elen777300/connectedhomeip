@@ -42,6 +42,7 @@
 #include <device/types/device-energy-management/impl/SimulatedEnergyManagement.h>
 #include <device/types/dimmable-light/impl/LoggingDimmableLight.h>
 #include <device/types/dimmable-plug-in-unit/DimmablePlugInUnit.h>
+#include <device/types/dimmable-plug-in-unit/impl/LoggingDimmablePlugInUnit.h>
 #include <device/types/dishwasher/impl/EmulatedDishwasher.h>
 #include <device/types/doorbell/Doorbell.h>
 #include <device/types/electrical-sensor/impl/SimulatedElectricalSensor.h>
@@ -62,6 +63,7 @@
 #include <device/types/microwave-oven/impl/EmulatedMicrowaveOven.h>
 #include <device/types/mode-select/impl/SimulatedModeSelect.h>
 #include <device/types/mounted-dimmable-load-control/MountedDimmableLoadControl.h>
+#include <device/types/mounted-dimmable-load-control/impl/LoggingMountedDimmableLoadControl.h>
 #include <device/types/mounted-on-off-control/MountedOnOffControl.h>
 #include <device/types/mounted-on-off-control/impl/LoggingMountedOnOffControl.h>
 #include <device/types/network-infrastructure-manager/impl/SimulatedNetworkInfrastructureManager.h>
@@ -628,8 +630,8 @@ private:
         {
             RegisterCreator("dimmable-plug-in-unit", [this]() {
                 VerifyOrDie(mContext.has_value());
-                return MakeDevice<DimmablePlugInUnit>(
-                    DimmablePlugInUnit::Context{
+                return MakeDevice<LoggingDimmablePlugInUnit>(
+                    LoggingDimmablePlugInUnit::Context{
                         .groupDataProvider = mContext->groupDataProvider,
                         .fabricTable       = mContext->fabricTable,
                         .timerDelegate     = mContext->timerDelegate,
@@ -664,8 +666,8 @@ private:
         {
             RegisterCreator("mounted-dimmable-load-control", [this]() {
                 VerifyOrDie(mContext.has_value());
-                return MakeDevice<MountedDimmableLoadControl>(
-                    MountedDimmableLoadControl::Context{
+                return MakeDevice<LoggingMountedDimmableLoadControl>(
+                    LoggingMountedDimmableLoadControl::Context{
                         .groupDataProvider = mContext->groupDataProvider,
                         .fabricTable       = mContext->fabricTable,
                         .timerDelegate     = mContext->timerDelegate,

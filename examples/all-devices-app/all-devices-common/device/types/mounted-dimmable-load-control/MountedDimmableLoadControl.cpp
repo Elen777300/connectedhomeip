@@ -23,15 +23,9 @@
 namespace chip {
 namespace app {
 
-MountedDimmableLoadControl::MountedDimmableLoadControl(const Context & context, const Config & config) :
-    DimmableLoad(Span<const DataModel::DeviceTypeEntry>(&Device::Type::kMountedDimmableLoadControl, 1), context,
-                 Delegates{
-                     .onOff        = *this,
-                     .levelControl = *this,
-                     .effect       = *this,
-                     .identify     = context.identifyDelegate,
-                 },
-                 config)
+MountedDimmableLoadControl::MountedDimmableLoadControl(const Context & context, const Delegates & delegates,
+                                                       const Config & config) :
+    DimmableLoad(Span<const DataModel::DeviceTypeEntry>(&Device::Type::kMountedDimmableLoadControl, 1), context, delegates, config)
 {}
 
 } // namespace app

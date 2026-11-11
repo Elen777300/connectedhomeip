@@ -17,17 +17,17 @@
 #pragma once
 
 #include <device/capabilities/dimmable-load/DimmableLoad.h>
-#include <device/capabilities/dimmable-load/impl/LoggingDimmableDelegate.h>
 
 namespace chip::app {
 
-class DimmablePlugInUnit : private LoggingDimmableDelegate, public DimmableLoad
+class DimmablePlugInUnit : public DimmableLoad
 {
 public:
-    using Context = DimmableLoad::Context;
-    using Config  = DimmableLoad::Config;
+    using Context   = DimmableLoad::Context;
+    using Config    = DimmableLoad::Config;
+    using Delegates = DimmableLoad::Delegates;
 
-    explicit DimmablePlugInUnit(const Context & context, const Config & config = {});
+    DimmablePlugInUnit(const Context & context, const Delegates & delegates, const Config & config = {});
     ~DimmablePlugInUnit() override = default;
 };
 
