@@ -28,10 +28,11 @@
 namespace chip {
 namespace app {
 
-class BridgedNode : public SingleEndpoint, public Clusters::BridgedDeviceBasicInformationDelegate
+class BridgedNode : public SingleEndpoint
 {
 public:
-    BridgedNode(TimerDelegate & timerDelegate, std::string uniqueId, std::string nodeLabel);
+    BridgedNode(TimerDelegate & timerDelegate, Clusters::BridgedDeviceBasicInformationDelegate & delegate, std::string uniqueId,
+                std::string nodeLabel);
     ~BridgedNode() override = default;
 
     CHIP_ERROR Register(chip::EndpointId endpoint, CodeDrivenDataModelProvider & provider,
@@ -46,6 +47,7 @@ public:
 
 protected:
     TimerDelegate & mTimerDelegate;
+    Clusters::BridgedDeviceBasicInformationDelegate & mDelegate;
     std::string mUniqueId;
     std::string mNodeLabel;
     LazyRegisteredServerCluster<Clusters::BridgedDeviceBasicInformationCluster> mBridgedDeviceBasicInformationCluster;

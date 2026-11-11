@@ -800,7 +800,8 @@ public:
 
     DeviceRegistrationEntryOfConcreteType<BridgedNode> CreateBridgedNode(const std::string & nodeLabel) override
     {
-        return { std::make_unique<BridgedNode>(mTimerDelegate, "very-unique-test-id", nodeLabel), nullptr, nullptr };
+        return { std::make_unique<BridgedNode>(mTimerDelegate, mBridgedNodeDelegate, "very-unique-test-id", nodeLabel), nullptr,
+                 nullptr };
     }
 
     DeviceRegistrationEntryOfConcreteType<Aggregator> CreateAggregator() override
@@ -813,6 +814,7 @@ public:
 private:
     TimerDelegate & mTimerDelegate;
     MockIdentifyDelegate mIdentifyDelegate;
+    Clusters::BridgedDeviceBasicInformationDelegate mBridgedNodeDelegate;
 };
 
 class MockEndpointIdAllocator : public EndpointIdAllocator
