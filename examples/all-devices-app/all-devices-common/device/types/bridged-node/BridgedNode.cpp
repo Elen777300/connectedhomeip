@@ -27,9 +27,10 @@ using namespace chip::app::Clusters;
 namespace chip {
 namespace app {
 
-BridgedNode::BridgedNode(TimerDelegate & timerDelegate, std::string uniqueId, std::string nodeLabel) :
+BridgedNode::BridgedNode(TimerDelegate & timerDelegate, Clusters::BridgedDeviceBasicInformationDelegate & delegate,
+                         std::string uniqueId, std::string nodeLabel) :
     SingleEndpoint(Span<const DataModel::DeviceTypeEntry>(&Device::Type::kBridgedNode, 1)), mTimerDelegate(timerDelegate),
-    mUniqueId(std::move(uniqueId)), mNodeLabel(std::move(nodeLabel))
+    mDelegate(delegate), mUniqueId(std::move(uniqueId)), mNodeLabel(std::move(nodeLabel))
 {}
 
 CHIP_ERROR BridgedNode::Register(EndpointId endpoint, CodeDrivenDataModelProvider & provider, EndpointComposition composition)
@@ -49,7 +50,7 @@ CHIP_ERROR BridgedNode::Register(EndpointId endpoint, CodeDrivenDataModelProvide
                                                      .uniqueId = mUniqueId,
                                                  },
                                                  BridgedDeviceBasicInformationCluster::Context{
-                                                     .delegate      = *this,
+                                                     .delegate      = mDelegate,
                                                      .timerDelegate = mTimerDelegate,
                                                  });
 

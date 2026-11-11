@@ -358,7 +358,7 @@ public:
         sBridgedNodeCount++;
         std::string label = nodeLabel.empty() ? "Bridged Node " + std::to_string(sBridgedNodeCount) : nodeLabel;
         return MakeDevice<BridgedNode, chip::app::DeviceRegistrationEntryOfConcreteType<BridgedNode>>(
-            mContext->timerDelegate, "bridged-node-unique-id-" + std::to_string(sBridgedNodeCount), label);
+            mContext->timerDelegate, mBridgedNodeDelegate, "bridged-node-unique-id-" + std::to_string(sBridgedNodeCount), label);
     }
 
     DeviceRegistrationEntryOfConcreteType<Aggregator> CreateAggregator() const
@@ -400,6 +400,11 @@ private:
     std::map<std::string, std::string> mAliases;
     std::optional<Context> mContext;
     std::string mDefaultDevice;
+
+    // Bridged nodes are created on demand and nothing in the app reacts to their
+    // NodeLabel writes, so one default delegate serves all of them. Mutable because
+    // the creators are const while the cluster holds a non-const reference.
+    mutable Clusters::BridgedDeviceBasicInformationDelegate mBridgedNodeDelegate;
 
     DeviceFactory()
     {
