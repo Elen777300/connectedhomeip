@@ -773,6 +773,15 @@ TEST_F(TestOOBAccessors, ModeSelectOOBAccessor)
     cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
 }
 
+class MockIdentifyDelegate : public Clusters::IdentifyDelegate
+{
+public:
+    void OnIdentifyStart(Clusters::IdentifyCluster &) override {}
+    void OnIdentifyStop(Clusters::IdentifyCluster &) override {}
+    void OnTriggerEffect(Clusters::IdentifyCluster &) override {}
+    bool IsTriggerEffectEnabled() const override { return false; }
+};
+
 class MockBridgedDeviceManager : public BridgedDeviceManager
 {
 public:
@@ -796,11 +805,14 @@ public:
 
     DeviceRegistrationEntryOfConcreteType<Aggregator> CreateAggregator() override
     {
-        return { std::make_unique<Aggregator>(mTimerDelegate), nullptr, nullptr };
+        return { std::make_unique<Aggregator>(
+                     Aggregator::Config{ .timerDelegate = mTimerDelegate, .identifyDelegate = mIdentifyDelegate }),
+                 nullptr, nullptr };
     }
 
 private:
     TimerDelegate & mTimerDelegate;
+    MockIdentifyDelegate mIdentifyDelegate;
 };
 
 class MockEndpointIdAllocator : public EndpointIdAllocator
