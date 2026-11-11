@@ -14,15 +14,17 @@
  *    limitations under the License.
  */
 
-#pragma once
+#include "OOBAccessors.h"
 
-#include <device/types/robotic-vacuum-cleaner/RoboticVacuumCleaner.h>
-#include <device/types/robotic-vacuum-cleaner/impl/SimulatedRoboticVacuumCleaner.h>
-#include <oob-accessors/OOBAccessorRegistry.h>
+#include <lib/support/CodeUtils.h>
+#include <memory>
+#include <oob-accessors/clusters/RvcOOBAccessor.h>
 
 namespace chip::app {
 
-void RegisterOOBAccessors(RoboticVacuumCleaner & device, OOBAccessorRegistry & registry);
-void RegisterOOBAccessors(SimulatedRoboticVacuumCleaner & device, OOBAccessorRegistry & registry);
+void RegisterOOBAccessors(SimulatedRoboticVacuumCleaner & device, OOBAccessorRegistry & registry)
+{
+    LogErrorOnFailure(registry.Register(std::make_unique<RvcOOBAccessor>(device, device.GetEndpointId())));
+}
 
 } // namespace chip::app

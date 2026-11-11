@@ -16,17 +16,11 @@
 
 #include "NamedPipeTranslators.h"
 #include <device/types/robotic-vacuum-cleaner/RoboticVacuumCleaner.h>
-#include <device/types/robotic-vacuum-cleaner/impl/SimulatedRoboticVacuumCleaner.h>
 #include <posix/named_pipe/translators/RvcTranslator.h>
 
 namespace chip::app {
 
 void RegisterNamedPipeTranslators(RoboticVacuumCleaner & device, NamedPipe::Dispatcher & dispatcher)
-{
-    LogErrorOnFailure(dispatcher.EnsureTranslatorRegistered<NamedPipe::RvcTranslator>());
-}
-
-void RegisterNamedPipeTranslators(SimulatedRoboticVacuumCleaner & device, NamedPipe::Dispatcher & dispatcher)
 {
     LogErrorOnFailure(dispatcher.EnsureTranslatorRegistered<NamedPipe::RvcTranslator>());
 }

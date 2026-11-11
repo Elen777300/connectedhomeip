@@ -92,11 +92,13 @@ bool IsOperating(RvcOperationalState::RvcOperationalStateCluster & cluster)
 } // namespace
 
 SimulatedRoboticVacuumCleaner::SimulatedRoboticVacuumCleaner(const Context & context) :
-    RoboticVacuumCleaner(RoboticVacuumCleaner::Config{
-        .operationalStateDelegate = *this,
-        .runModeDelegate          = mRunModeAppDelegate,
-        .diagnosticDataProvider   = context.diagnosticDataProvider,
-    }),
+    RunModeDelegateAdapter(*this), RoboticVacuumCleaner(RoboticVacuumCleaner::Config{
+                                       .operationalStateDelegate = *this,
+                                       .runModeDelegate          = static_cast<Clusters::ModeBase::AppDelegate &>(*this),
+                                       .identifyDelegate         = context.identifyDelegate,
+                                       .timerDelegate            = context.timerDelegate,
+                                       .diagnosticDataProvider   = context.diagnosticDataProvider,
+                                   }),
     mTimerDelegate(context.timerDelegate)
 {}
 
@@ -630,21 +632,26 @@ void SimulatedRoboticVacuumCleaner::GoToNextArea(OperationalStatusEnum currentAr
 
 // -- RunMode / CleanMode logic (fed by the thin AppDelegate adapters above) --
 
-CHIP_ERROR SimulatedRoboticVacuumCleaner::RunModeAppDelegate::GetModeLabelByIndex(uint8_t modeIndex, MutableCharSpan & label)
+void RunModeDelegateAdapter::HandleChangeToMode(uint8_t newMode,
+                                                Clusters::ModeBase::Commands::ChangeToModeResponse::Type & response)
+{
+    mOwner.HandleRunModeChangeToMode(newMode, response);
+}
+
+CHIP_ERROR RunModeDelegateAdapter::GetModeLabelByIndex(uint8_t modeIndex, MutableCharSpan & label)
 {
     VerifyOrReturnError(modeIndex < MATTER_ARRAY_SIZE(kRunModeOptions), CHIP_ERROR_PROVIDER_LIST_EXHAUSTED);
     return CopyCharSpanToMutableCharSpan(kRunModeOptions[modeIndex].label, label);
 }
 
-CHIP_ERROR SimulatedRoboticVacuumCleaner::RunModeAppDelegate::GetModeValueByIndex(uint8_t modeIndex, uint8_t & value)
+CHIP_ERROR RunModeDelegateAdapter::GetModeValueByIndex(uint8_t modeIndex, uint8_t & value)
 {
     VerifyOrReturnError(modeIndex < MATTER_ARRAY_SIZE(kRunModeOptions), CHIP_ERROR_PROVIDER_LIST_EXHAUSTED);
     value = kRunModeOptions[modeIndex].value;
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR SimulatedRoboticVacuumCleaner::RunModeAppDelegate::GetModeTagsByIndex(uint8_t modeIndex,
-                                                                                 DataModel::List<ModeTagStructType> & modeTags)
+CHIP_ERROR RunModeDelegateAdapter::GetModeTagsByIndex(uint8_t modeIndex, DataModel::List<ModeTagStructType> & modeTags)
 {
     VerifyOrReturnError(modeIndex < MATTER_ARRAY_SIZE(kRunModeOptions), CHIP_ERROR_PROVIDER_LIST_EXHAUSTED);
     const auto & tags = kRunModeOptions[modeIndex].tags;
