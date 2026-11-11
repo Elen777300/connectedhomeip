@@ -41,7 +41,7 @@ struct ChimeTone
 };
 
 // Chime ID is the index into both tables; keep them in sync.
-const Chime::Sound kSounds[] = {
+const LoggingChime::Sound kSounds[] = {
     { 0, "Ding Dong"_span },
     { 1, "Ring Ring"_span },
     { 2, "Alert Beep"_span },
@@ -65,12 +65,12 @@ uint32_t FrequencyToPhaseIncrement(float frequency)
 } // namespace
 
 TonePlayingChime::TonePlayingChime(TimerDelegate & timerDelegate, ChimeAudioSink & sink) :
-    Chime(timerDelegate, Span<const Sound>(kSounds)), mSink(sink)
+    LoggingChime(timerDelegate, Span<const Sound>(kSounds)), mSink(sink)
 {}
 
 Protocols::InteractionModel::Status TonePlayingChime::PlayChimeSound(uint8_t chimeID)
 {
-    auto status = Chime::PlayChimeSound(chimeID);
+    auto status = LoggingChime::PlayChimeSound(chimeID);
     if (status != Protocols::InteractionModel::Status::Success)
     {
         return status;

@@ -14,29 +14,22 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  */
+
 #pragma once
 
 #include <app/clusters/chime-server/ChimeCluster.h>
 #include <app/clusters/identify-server/IdentifyCluster.h>
 #include <data-model-providers/codedriven/CodeDrivenDataModelProvider.h>
 #include <device/api/SingleEndpoint.h>
-#include <lib/support/Span.h>
 #include <lib/support/TimerDelegate.h>
 
 namespace chip {
 namespace app {
 
-class Chime : public SingleEndpoint, public Clusters::ChimeDelegate
+class Chime : public SingleEndpoint
 {
 public:
-    struct Sound
-    {
-        uint8_t id;
-        CharSpan name;
-    };
-
-    // Note: sounds array must outlive the Chime lifetime (i.e. often static or similar)
-    Chime(TimerDelegate & timerDelegate, Span<const Sound> sounds);
+    Chime(TimerDelegate & timerDelegate, Clusters::ChimeDelegate & delegate);
     ~Chime() override = default;
 
     CHIP_ERROR Register(chip::EndpointId endpoint, CodeDrivenDataModelProvider & provider,
@@ -45,14 +38,9 @@ public:
 
     Clusters::ChimeCluster & ChimeCluster();
 
-    // ChimeDelegate
-    CHIP_ERROR GetChimeSoundByIndex(uint8_t chimeIndex, uint8_t & chimeID, MutableCharSpan & name) override;
-    CHIP_ERROR GetChimeIDByIndex(uint8_t chimeIndex, uint8_t & chimeID) override;
-    virtual Protocols::InteractionModel::Status PlayChimeSound(uint8_t chimeID) override;
-
 protected:
     TimerDelegate & mTimerDelegate;
-    Span<const Sound> mSounds;
+    Clusters::ChimeDelegate & mDelegate;
     LazyRegisteredServerCluster<Clusters::IdentifyCluster> mIdentifyCluster;
     LazyRegisteredServerCluster<Clusters::ChimeCluster> mChimeCluster;
 };

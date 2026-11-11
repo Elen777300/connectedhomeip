@@ -31,3 +31,12 @@ source_set("chime") {
     "${chip_root}/zzz_generated/app-common/devices/",
   ]
 }
+
+source_set("logging") {
+  sources = [
+    "impl/LoggingChime.cpp",
+    "impl/LoggingChime.h",
+  ]
+
+  public_deps = [ ":chime" ]
+}

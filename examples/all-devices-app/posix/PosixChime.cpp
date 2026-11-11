@@ -24,22 +24,22 @@ namespace chip {
 namespace app {
 
 namespace {
-Span<const Chime::Sound> MapSounds(PosixAudioManager & audioManager)
+Span<const LoggingChime::Sound> MapSounds(PosixAudioManager & audioManager)
 {
-    static std::vector<Chime::Sound> sMappedSounds;
+    static std::vector<LoggingChime::Sound> sMappedSounds;
     if (sMappedSounds.empty())
     {
         for (const auto & sound : audioManager.GetSupportedSounds())
         {
-            sMappedSounds.push_back(Chime::Sound{ sound.id, CharSpan::fromCharString(sound.name) });
+            sMappedSounds.push_back(LoggingChime::Sound{ sound.id, CharSpan::fromCharString(sound.name) });
         }
     }
-    return Span<const Chime::Sound>(sMappedSounds.data(), sMappedSounds.size());
+    return Span<const LoggingChime::Sound>(sMappedSounds.data(), sMappedSounds.size());
 }
 } // namespace
 
 PosixChime::PosixChime(TimerDelegate & timerDelegate, PosixAudioManager & audioManager) :
-    Chime(timerDelegate, MapSounds(audioManager)), mAudioManager(audioManager)
+    LoggingChime(timerDelegate, MapSounds(audioManager)), mAudioManager(audioManager)
 {
     CHIP_ERROR err = mAudioManager.Init();
     if (err != CHIP_NO_ERROR)
@@ -51,7 +51,7 @@ PosixChime::PosixChime(TimerDelegate & timerDelegate, PosixAudioManager & audioM
 Protocols::InteractionModel::Status PosixChime::PlayChimeSound(uint8_t chimeID)
 {
     // Call base class to log the default message and validate ID
-    auto status = Chime::PlayChimeSound(chimeID);
+    auto status = LoggingChime::PlayChimeSound(chimeID);
     if (status != Protocols::InteractionModel::Status::Success)
     {
         return status;

@@ -21,7 +21,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <device/types/chime/Chime.h>
+#include <device/types/chime/impl/LoggingChime.h>
 
 namespace chip::app {
 
@@ -39,7 +39,7 @@ public:
 };
 
 /// Synthesizes the chime sounds and plays them through a ChimeAudioSink supplied by the board.
-class TonePlayingChime : public Chime
+class TonePlayingChime : public LoggingChime
 {
 public:
     static constexpr uint32_t kSampleRateHz = 48000;

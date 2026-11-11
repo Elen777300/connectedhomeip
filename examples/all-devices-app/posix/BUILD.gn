@@ -53,7 +53,7 @@ source_set("device-instances") {
     "${chip_root}/examples/all-devices-app/all-devices-common/device/types/boolean-state-sensor",
     "${chip_root}/examples/all-devices-app/all-devices-common/device/types/boolean-state-sensor:posix",
     "${chip_root}/examples/all-devices-app/all-devices-common/device/types/bridged-node",
-    "${chip_root}/examples/all-devices-app/all-devices-common/device/types/chime",
+    "${chip_root}/examples/all-devices-app/all-devices-common/device/types/chime:logging",
     "${chip_root}/examples/all-devices-app/all-devices-common/device/types/closure",
     "${chip_root}/examples/all-devices-app/all-devices-common/device/types/closure-panel",
     "${chip_root}/examples/all-devices-app/all-devices-common/device/types/color-temperature-light",
