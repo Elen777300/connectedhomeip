@@ -17,17 +17,16 @@
 #pragma once
 
 #include <device/capabilities/fan-load/FanLoad.h>
-#include <device/capabilities/fan-load/impl/LoggingFanDelegate.h>
 
 namespace chip {
 namespace app {
 
-class ExtractorHood : private LoggingFanDelegate, public FanLoad
+class ExtractorHood : public FanLoad
 {
 public:
     using Context = FanLoad::Context;
 
-    explicit ExtractorHood(const Context & context);
+    ExtractorHood(const Context & context, Clusters::FanControl::Delegate & fanDelegate, Clusters::OnOffDelegate * onOffDelegate);
     ~ExtractorHood() override = default;
 };
 
