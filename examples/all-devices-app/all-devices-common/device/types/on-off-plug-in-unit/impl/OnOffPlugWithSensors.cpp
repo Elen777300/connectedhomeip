@@ -138,8 +138,8 @@ CHIP_ERROR OnOffPlugWithSensors::Register(chip::EndpointId endpoint, CodeDrivenD
     }
 
     mEnergyMeasurementCluster.Create(EnergyMeasurementClusterT::Config{
-        .endpointId         = endpoint,
-        .featureFlags       = BitMask<ElectricalEnergyMeasurement::Feature>(ElectricalEnergyMeasurement::Feature::kImportedEnergy,
+        .endpointId   = endpoint,
+        .featureFlags = BitMask<ElectricalEnergyMeasurement::Feature>(ElectricalEnergyMeasurement::Feature::kImportedEnergy,
                                                                       ElectricalEnergyMeasurement::Feature::kCumulativeEnergy),
         .optionalAttributes = EnergyMeasurementClusterT::OptionalAttributesSet(),
         .accuracyStruct     = kEnergyAccuracy,
@@ -233,14 +233,12 @@ void OnOffPlugWithSensors::OnOffStartup(bool on)
 {
     ChipLogProgress(DeviceLayer, "OnOffPlugWithSensors: startup %s", on ? "ON" : "OFF");
     AccumulateEnergy();
-    mIsOn = on;
 }
 
 void OnOffPlugWithSensors::OnOnOffChanged(bool on)
 {
     ChipLogProgress(DeviceLayer, "OnOffPlugWithSensors: turned %s", on ? "ON" : "OFF");
     AccumulateEnergy();
-    mIsOn = on;
     if (mPowerMeasurementCluster.IsConstructed())
     {
         mPowerMeasurementCluster.Cluster().MarkAttributeDirty(ElectricalPowerMeasurement::Attributes::ActivePower::Id);
@@ -308,7 +306,7 @@ void OnOffPlugWithSensors::TimerFired()
 void OnOffPlugWithSensors::AccumulateEnergy()
 {
     System::Clock::Timestamp now = mContext.timerDelegate.GetCurrentMonotonicTimestamp();
-    if (mIsOn)
+    if (IsOn())
     {
         mEnergyImported_mWms += kOnPower_mW * static_cast<int64_t>((now - mLastEnergyUpdate).count());
     }

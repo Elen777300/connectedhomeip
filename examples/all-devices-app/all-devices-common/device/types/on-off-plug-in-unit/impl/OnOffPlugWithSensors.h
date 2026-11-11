@@ -128,8 +128,8 @@ private:
     }
     CHIP_ERROR EndHarmonicPhasesRead() override { return CHIP_NO_ERROR; }
     DataModel::Nullable<int64_t> GetVoltage() override { return DataModel::MakeNullable(kVoltage_mV); }
-    DataModel::Nullable<int64_t> GetActiveCurrent() override { return DataModel::MakeNullable(mIsOn ? kOnCurrent_mA : 0); }
-    DataModel::Nullable<int64_t> GetActivePower() override { return DataModel::MakeNullable(mIsOn ? kOnPower_mW : 0); }
+    DataModel::Nullable<int64_t> GetActiveCurrent() override { return DataModel::MakeNullable(IsOn() ? kOnCurrent_mA : 0); }
+    DataModel::Nullable<int64_t> GetActivePower() override { return DataModel::MakeNullable(IsOn() ? kOnPower_mW : 0); }
     DataModel::Nullable<int64_t> GetReactiveCurrent() override { return DataModel::NullNullable; }
     DataModel::Nullable<int64_t> GetApparentCurrent() override { return DataModel::NullNullable; }
     DataModel::Nullable<int64_t> GetReactivePower() override { return DataModel::NullNullable; }
@@ -150,6 +150,7 @@ private:
 
     /// Adds the energy used since the last call to mEnergyImported_mWms.
     void AccumulateEnergy();
+    bool IsOn() const { return mOnOffCluster.Cluster().GetOnOff(); }
 
     class DefaultScenesManagementTableProvider : public Clusters::ScenesManagementTableProvider
     {
@@ -168,7 +169,6 @@ private:
 
     const Context mContext;
 
-    bool mIsOn = false;
     System::Clock::Timestamp mLastEnergyUpdate{ 0 };
     // Milliwatt-milliseconds, so short on-periods are not lost to rounding before conversion to mWh.
     int64_t mEnergyImported_mWms = 0;
