@@ -27,10 +27,10 @@ namespace chip::app {
 /**
  * Simulated electrical sensor that supports test event triggers
  */
-class SimulatedElectricalSensor : public ElectricalSensor,
-                                  public Clusters::ElectricalEnergyMeasurement::Delegate,
+class SimulatedElectricalSensor : public Clusters::ElectricalEnergyMeasurement::Delegate,
                                   public Clusters::ElectricalPowerMeasurement::Delegate,
-                                  public Clusters::PowerTopology::Delegate
+                                  public Clusters::PowerTopology::Delegate,
+                                  public ElectricalSensor
 {
 public:
     enum class Role : uint8_t
@@ -131,6 +131,8 @@ private:
     Role mRole;
     FakeReadings mFakeReadings;
     TestEventTriggerDelegate & mTestEventTriggerDelegate;
+
+    ElectricalPowerMeasurement::Structs::MeasurementAccuracyRangeStruct::Type mAccuracyRange = { .rangeMin = 0, .rangeMax = 10 };
 };
 
 } // namespace chip::app
