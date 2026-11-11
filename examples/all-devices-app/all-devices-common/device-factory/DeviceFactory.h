@@ -34,6 +34,7 @@
 #include <device/types/boolean-state-sensor/BooleanStateSensor.h>
 #include <device/types/bridged-node/BridgedNode.h>
 #include <device/types/chime/Chime.h>
+#include <device/types/chime/impl/LoggingChime.h>
 #include <device/types/closure/impl/ClosureVariants.h>
 #include <device/types/closure/impl/SimulatedClosure.h>
 #include <device/types/color-temperature-light/impl/LoggingColorTemperatureLight.h>
@@ -525,11 +526,11 @@ private:
         {
             RegisterCreator("chime", [this]() {
                 VerifyOrDie(mContext.has_value());
-                static const Chime::Sound kDefaultSounds[] = {
+                static const LoggingChime::Sound kDefaultSounds[] = {
                     { 0, "Ding Dong"_span },
                     { 1, "Ring Ring"_span },
                 };
-                return MakeDevice<Chime>(mContext->timerDelegate, Span<const Chime::Sound>(kDefaultSounds));
+                return MakeDevice<LoggingChime>(mContext->timerDelegate, Span<const LoggingChime::Sound>(kDefaultSounds));
             });
         }
         if constexpr (ALL_DEVICES_ENABLE_CLOSURE)

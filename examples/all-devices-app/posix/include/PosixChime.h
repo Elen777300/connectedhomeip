@@ -17,14 +17,14 @@
 #pragma once
 
 #include <PosixAudioManager.h>
-#include <device/types/chime/Chime.h>
+#include <device/types/chime/impl/LoggingChime.h>
 
 namespace chip {
 namespace app {
 
-// Platform-specific implementation of Chime for POSIX systems.
+// Platform-specific implementation of LoggingChime for POSIX systems.
 // It translates Matter Chime cluster commands into calls to the shared PosixAudioManager.
-class PosixChime : public Chime
+class PosixChime : public LoggingChime
 {
 public:
     PosixChime(TimerDelegate & timerDelegate, PosixAudioManager & audioManager);
