@@ -39,7 +39,13 @@ namespace app {
 class Aggregator : public SingleEndpoint
 {
 public:
-    Aggregator(TimerDelegate & timerDelegate);
+    struct Config
+    {
+        TimerDelegate & timerDelegate;
+        Clusters::IdentifyDelegate & identifyDelegate;
+    };
+
+    explicit Aggregator(const Config & config);
     ~Aggregator() override = default;
 
     CHIP_ERROR Register(chip::EndpointId endpoint, CodeDrivenDataModelProvider & provider,
@@ -51,6 +57,7 @@ public:
 
 protected:
     TimerDelegate & mTimerDelegate;
+    Clusters::IdentifyDelegate & mIdentifyDelegate;
     LazyRegisteredServerCluster<Clusters::IdentifyCluster> mIdentifyCluster;
 };
 

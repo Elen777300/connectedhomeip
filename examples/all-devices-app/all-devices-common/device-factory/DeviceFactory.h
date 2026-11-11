@@ -364,7 +364,8 @@ public:
     DeviceRegistrationEntryOfConcreteType<Aggregator> CreateAggregator() const
     {
         VerifyOrDie(mContext.has_value());
-        return MakeDevice<Aggregator, chip::app::DeviceRegistrationEntryOfConcreteType<Aggregator>>(mContext->timerDelegate);
+        return MakeDevice<Aggregator, chip::app::DeviceRegistrationEntryOfConcreteType<Aggregator>>(
+            Aggregator::Config{ .timerDelegate = mContext->timerDelegate, .identifyDelegate = mContext->identifyDelegate });
     }
 
     DeviceRegistrationEntry Create(const std::string & deviceTypeArg, const std::string & nodeLabel = "") const
