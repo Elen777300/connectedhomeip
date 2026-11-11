@@ -1,5 +1,4 @@
 /*
- *
  *    Copyright (c) 2026 Project CHIP Authors
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,27 +21,46 @@
 namespace chip::app::Clusters::AmbientContextSensing {
 
 LoggingAmbientContextSensor::LoggingAmbientContextSensor(TimerDelegate & timerDelegate) :
-    AmbientContextSensor(AmbientContextSensingConfig{ timerDelegate }
-                             .WithFeatures(BitMask<AmbientContextSensing::Feature>(kFeatureAllForLog))
-                             .WithHoldTime(10,
-                                           {
-                                               .holdTimeMin     = 1,
-                                               .holdTimeMax     = 300,
-                                               .holdTimeDefault = 10,
-                                           }),
-                         timerDelegate, *this),
+    AmbientContextSensor(AmbientContextSensor::Config{
+        .timerDelegate              = timerDelegate,
+        .serviceAreaDelegate        = *this,
+        .serviceAreaStorageDelegate = *this,
+    }),
     mAmbientContextTypeSupportedBuf{}, mPredictActivityBuf{}, mSensorFusionSupportedBuf{}
 {}
 
-CHIP_ERROR LoggingAmbientContextSensor::Register(EndpointId endpoint, CodeDrivenDataModelProvider & provider,
-                                                 EndpointComposition composition)
+CHIP_ERROR LoggingAmbientContextSensor::RegisterOptionalClusters(EndpointId endpoint, CodeDrivenDataModelProvider & provider)
 {
-    return AmbientContextSensor::Register(endpoint, provider, composition);
+    Clusters::AmbientContextSensingCluster::Config ambientContextConfig(mConfig.timerDelegate);
+    ambientContextConfig.WithFeatures(BitMask<AmbientContextSensing::Feature>(kFeatureAllForLog))
+        .WithHoldTime(10, { .holdTimeMin = 1, .holdTimeMax = 300, .holdTimeDefault = 10 });
+
+    mAmbientContextSensingCluster.Create(endpoint, ambientContextConfig);
+    AmbientContextSensingCluster().SetDelegate(this);
+    ReturnErrorOnFailure(provider.AddCluster(mAmbientContextSensingCluster.Registration()));
+
+    mAmbientSensingUnionCluster.Create(Clusters::AmbientSensingUnionCluster::Config(endpoint)
+                                           .WithUnionName("all-devices-sensing-union"_span)
+                                           .WithUnionHealth(Clusters::AmbientSensingUnion::UnionHealthEnum::kFullyFunctional));
+    ReturnErrorOnFailure(mAmbientSensingUnionCluster.Cluster().AddMatterContributor(
+        1, 1, Clusters::AmbientSensingUnion::UnionContributorStatusEnum::kUnionContributorOnline, FabricIndex{ 1 }));
+    ReturnErrorOnFailure(provider.AddCluster(mAmbientSensingUnionCluster.Registration()));
+
+    return CHIP_NO_ERROR;
 }
 
-void LoggingAmbientContextSensor::Unregister(CodeDrivenDataModelProvider & provider)
+void LoggingAmbientContextSensor::UnregisterOptionalClusters(CodeDrivenDataModelProvider & provider)
 {
-    AmbientContextSensor::Unregister(provider);
+    if (mAmbientSensingUnionCluster.IsConstructed())
+    {
+        LogErrorOnFailure(provider.RemoveCluster(&mAmbientSensingUnionCluster.Cluster()));
+        mAmbientSensingUnionCluster.Destroy();
+    }
+    if (mAmbientContextSensingCluster.IsConstructed())
+    {
+        LogErrorOnFailure(provider.RemoveCluster(&mAmbientContextSensingCluster.Cluster()));
+        mAmbientContextSensingCluster.Destroy();
+    }
 }
 
 // AmbientContextSensingDelegate implementation
@@ -127,6 +145,29 @@ uint64_t LoggingAmbientContextSensor::GetEpochNow()
     CHIP_ERROR err = System::SystemClock().GetClock_RealTimeMS(timestamp_ms);
 
     return (err == CHIP_NO_ERROR) ? timestamp_ms.count() : 0;
+}
+
+// ServiceArea::Delegate implementation
+bool LoggingAmbientContextSensor::IsSetSelectedAreasAllowed(MutableCharSpan & statusText)
+{
+    return true;
+}
+
+bool LoggingAmbientContextSensor::IsValidSelectAreasSet(const Span<const uint32_t> & selectedAreas,
+                                                        ServiceArea::SelectAreasStatus & locationStatus,
+                                                        MutableCharSpan & statusText)
+{
+    ServiceArea::AreaStructureWrapper area;
+    uint32_t listIndex = 0;
+    for (uint32_t areaId : selectedAreas)
+    {
+        if (!ServiceAreaCluster().GetSupportedAreaById(areaId, listIndex, area))
+        {
+            locationStatus = ServiceArea::SelectAreasStatus::kUnsupportedArea;
+            return false;
+        }
+    }
+    return true;
 }
 
 } // namespace chip::app::Clusters::AmbientContextSensing

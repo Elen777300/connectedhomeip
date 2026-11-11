@@ -19,16 +19,12 @@ source_set("ambient-context-sensor") {
   sources = [
     "AmbientContextSensor.cpp",
     "AmbientContextSensor.h",
-    "OOBAccessors.cpp",
-    "OOBAccessors.h",
   ]
 
   public_deps = [
     "${chip_root}/examples/all-devices-app/all-devices-common/device/api:single-endpoint-device",
-    "${chip_root}/examples/all-devices-app/all-devices-common/oob-accessors/clusters:ambient-context",
-    "${chip_root}/src/app/clusters/ambient-context-sensing-server",
-    "${chip_root}/src/app/clusters/ambient-sensing-union-server",
     "${chip_root}/src/app/clusters/identify-server",
+    "${chip_root}/src/app/clusters/service-area-server",
     "${chip_root}/src/data-model-providers/codedriven",
     "${chip_root}/src/lib/core:error",
     "${chip_root}/src/lib/support",
@@ -40,9 +36,17 @@ source_set("logging") {
   sources = [
     "impl/LoggingAmbientContextSensor.cpp",
     "impl/LoggingAmbientContextSensor.h",
+    "impl/OOBAccessors.cpp",
+    "impl/OOBAccessors.h",
   ]
 
-  public_deps = [ ":ambient-context-sensor" ]
+  public_deps = [
+    ":ambient-context-sensor",
+    "${chip_root}/examples/all-devices-app/all-devices-common/device/capabilities/service-area:logging",
+    "${chip_root}/examples/all-devices-app/all-devices-common/oob-accessors/clusters:ambient-context",
+    "${chip_root}/src/app/clusters/ambient-context-sensing-server",
+    "${chip_root}/src/app/clusters/ambient-sensing-union-server",
+  ]
 }
 
 source_set("posix") {

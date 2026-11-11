@@ -16,21 +16,28 @@
  */
 #pragma once
 
-#include <app/clusters/ambient-context-sensing-server/AmbientContextSensingCluster.h>
-#include <app/clusters/ambient-sensing-union-server/AmbientSensingUnionCluster.h>
 #include <app/clusters/identify-server/IdentifyCluster.h>
+#include <app/clusters/service-area-server/ServiceAreaCluster.h>
 #include <device/api/SingleEndpoint.h>
 #include <lib/support/TimerDelegate.h>
 
 namespace chip::app {
 
+/// Ambient Context Sensor device type (0x0150) rev 2.
+///
+/// The Ambient Context Sensing and Ambient Sensing Union clusters are optional in the
+/// device type, so subclasses add them through RegisterOptionalClusters().
 class AmbientContextSensor : public SingleEndpoint
 {
 public:
-    using AmbientContextSensingConfig = Clusters::AmbientContextSensingCluster::Config;
+    struct Config
+    {
+        TimerDelegate & timerDelegate;
+        Clusters::ServiceArea::Delegate & serviceAreaDelegate;
+        Clusters::ServiceArea::StorageDelegate & serviceAreaStorageDelegate;
+    };
 
-    AmbientContextSensor(AmbientContextSensingConfig config, TimerDelegate & timerDelegate,
-                         Clusters::AmbientContextSensing::AmbientContextSensingDelegate & delegate);
+    explicit AmbientContextSensor(const Config & config);
     ~AmbientContextSensor() override = default;
 
     // DeviceInterface pure virtual lifecycle hooks
@@ -39,16 +46,20 @@ public:
     void Unregister(CodeDrivenDataModelProvider & provider) override;
 
     Clusters::IdentifyCluster & IdentifyCluster() { return mIdentifyCluster.Cluster(); }
-    Clusters::AmbientContextSensingCluster & AmbientContextSensingCluster() { return mAmbientContextSensingCluster.Cluster(); }
-    Clusters::AmbientSensingUnionCluster & AmbientSensingUnionCluster() { return mAmbientSensingUnionCluster.Cluster(); }
+    Clusters::ServiceArea::ServiceAreaCluster & ServiceAreaCluster() { return mServiceAreaCluster.Cluster(); }
 
 protected:
-    AmbientContextSensingConfig mConfig;
-    TimerDelegate & mTimerDelegate;
-    Clusters::AmbientContextSensing::AmbientContextSensingDelegate & mDelegate;
+    virtual CHIP_ERROR RegisterOptionalClusters(EndpointId endpoint, CodeDrivenDataModelProvider & provider)
+    {
+        return CHIP_NO_ERROR;
+    }
+    virtual void UnregisterOptionalClusters(CodeDrivenDataModelProvider & provider) {}
+
+    Config mConfig;
+
+private:
     LazyRegisteredServerCluster<Clusters::IdentifyCluster> mIdentifyCluster;
-    LazyRegisteredServerCluster<Clusters::AmbientContextSensingCluster> mAmbientContextSensingCluster;
-    LazyRegisteredServerCluster<Clusters::AmbientSensingUnionClusterT<>> mAmbientSensingUnionCluster;
+    LazyRegisteredServerCluster<Clusters::ServiceArea::ServiceAreaCluster> mServiceAreaCluster;
 };
 
 } // namespace chip::app

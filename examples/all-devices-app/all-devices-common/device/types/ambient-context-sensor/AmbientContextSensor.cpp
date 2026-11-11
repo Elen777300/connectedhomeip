@@ -22,52 +22,42 @@ using namespace chip::app::Clusters;
 
 namespace chip::app {
 
-AmbientContextSensor::AmbientContextSensor(AmbientContextSensingConfig config, TimerDelegate & timerDelegate,
-                                           AmbientContextSensing::AmbientContextSensingDelegate & delegate) :
-    SingleEndpoint(Span<const DataModel::DeviceTypeEntry>(&Device::Type::kAmbientContextSensor, 1)),
-    mConfig(config), mTimerDelegate(timerDelegate), mDelegate(delegate)
+AmbientContextSensor::AmbientContextSensor(const Config & config) :
+    SingleEndpoint(Span<const DataModel::DeviceTypeEntry>(&Device::Type::kAmbientContextSensor, 1)), mConfig(config)
 {}
 
 CHIP_ERROR AmbientContextSensor::Register(chip::EndpointId endpoint, CodeDrivenDataModelProvider & provider,
                                           EndpointComposition composition)
 {
+    VerifyOrReturnError(mEndpointId == kInvalidEndpointId, CHIP_ERROR_INCORRECT_STATE);
+    DeviceRegistrationTransaction transaction(*this, provider);
+
     ReturnErrorOnFailure(RegisterDescriptor(endpoint, provider, composition));
 
-    // Create the identify cluster.
-    mIdentifyCluster.Create(IdentifyCluster::Config(endpoint, mTimerDelegate));
+    mIdentifyCluster.Create(IdentifyCluster::Config(endpoint, mConfig.timerDelegate));
     ReturnErrorOnFailure(provider.AddCluster(mIdentifyCluster.Registration()));
 
-    // Create the ambient context sensing cluster
-    mAmbientContextSensingCluster.Create(endpoint, mConfig);
-    AmbientContextSensingCluster().SetDelegate(&mDelegate);
-    ReturnErrorOnFailure(provider.AddCluster(mAmbientContextSensingCluster.Registration()));
+    mServiceAreaCluster.Create(endpoint, mConfig.serviceAreaStorageDelegate, mConfig.serviceAreaDelegate,
+                               BitMask<ServiceArea::Feature>{});
+    ReturnErrorOnFailure(provider.AddCluster(mServiceAreaCluster.Registration()));
 
-    // Create the ambient sensing union cluster
-    mAmbientSensingUnionCluster.Create(AmbientSensingUnionCluster::Config(endpoint)
-                                           .WithUnionName("all-devices-sensing-union"_span)
-                                           .WithUnionHealth(Clusters::AmbientSensingUnion::UnionHealthEnum::kFullyFunctional));
-    ReturnErrorOnFailure(mAmbientSensingUnionCluster.Cluster().AddMatterContributor(
-        /* nodeId= */ 1,
-        /* endpointId= */ 1, Clusters::AmbientSensingUnion::UnionContributorStatusEnum::kUnionContributorOnline,
-        /* fabricIndex= */ 1));
-    ReturnErrorOnFailure(provider.AddCluster(mAmbientSensingUnionCluster.Registration()));
+    ReturnErrorOnFailure(RegisterOptionalClusters(endpoint, provider));
 
-    return provider.AddEndpoint(mEndpointRegistration);
+    ReturnErrorOnFailure(provider.AddEndpoint(mEndpointRegistration));
+    transaction.Commit();
+    return CHIP_NO_ERROR;
 }
 
 void AmbientContextSensor::Unregister(CodeDrivenDataModelProvider & provider)
 {
     UnregisterDescriptor(provider);
 
-    if (mAmbientSensingUnionCluster.IsConstructed())
+    UnregisterOptionalClusters(provider);
+
+    if (mServiceAreaCluster.IsConstructed())
     {
-        LogErrorOnFailure(provider.RemoveCluster(&mAmbientSensingUnionCluster.Cluster()));
-        mAmbientSensingUnionCluster.Destroy();
-    }
-    if (mAmbientContextSensingCluster.IsConstructed())
-    {
-        LogErrorOnFailure(provider.RemoveCluster(&mAmbientContextSensingCluster.Cluster()));
-        mAmbientContextSensingCluster.Destroy();
+        LogErrorOnFailure(provider.RemoveCluster(&mServiceAreaCluster.Cluster()));
+        mServiceAreaCluster.Destroy();
     }
     if (mIdentifyCluster.IsConstructed())
     {
