@@ -487,7 +487,7 @@ TEST_F(BatteryStorageTestFixture, HandlesPowerAdjustmentCommands)
     ASSERT_EQ(device.Register(allocator, mProvider), CHIP_NO_ERROR);
     ASSERT_EQ(mProvider.Startup(mContext.ImContext()), CHIP_NO_ERROR);
 
-    EnergyManagement & energyManagement = device.GetEnergyManagement();
+    SimulatedEnergyManagement & energyManagement = device.GetEnergyManagement();
     Testing::ClusterTester tester(energyManagement.EnergyManagementCluster());
 
     ASSERT_FALSE(energyManagement.GetPowerAdjustmentCapability().IsNull());
@@ -540,7 +540,7 @@ TEST_F(BatteryStorageTestFixture, RejectsInvalidPowerAdjustmentCommands)
     ASSERT_EQ(device.Register(allocator, mProvider), CHIP_NO_ERROR);
     ASSERT_EQ(mProvider.Startup(mContext.ImContext()), CHIP_NO_ERROR);
 
-    EnergyManagement & energyManagement = device.GetEnergyManagement();
+    SimulatedEnergyManagement & energyManagement = device.GetEnergyManagement();
     Testing::ClusterTester tester(energyManagement.EnergyManagementCluster());
     Commands::CancelPowerAdjustRequest::Type cancelRequest;
 
