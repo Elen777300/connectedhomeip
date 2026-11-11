@@ -24,11 +24,11 @@
 
 namespace chip::app {
 
-class EnergyManagement : public SingleEndpoint, public Clusters::DeviceEnergyManagement::Delegate
+class EnergyManagement : public SingleEndpoint
 {
 public:
-    using SingleEndpoint::GetEndpointId;
-    using Feature = Clusters::DeviceEnergyManagement::Feature;
+    using Feature  = Clusters::DeviceEnergyManagement::Feature;
+    using Delegate = Clusters::DeviceEnergyManagement::Delegate;
 
     struct Config
     {
@@ -37,62 +37,37 @@ public:
         bool esaCanGenerate                                   = false;
     };
 
-    explicit EnergyManagement(TimerDelegate & timerDelegate);
-    explicit EnergyManagement(TimerDelegate & timerDelegate, Config config);
+    struct Context
+    {
+        TimerDelegate & timerDelegate;
+        Delegate & delegate;
+    };
+
+    explicit EnergyManagement(const Context & context);
+    EnergyManagement(const Context & context, Config config);
     ~EnergyManagement() override = default;
 
     CHIP_ERROR Register(EndpointId endpoint, CodeDrivenDataModelProvider & provider, EndpointComposition composition = {}) override;
     void Unregister(CodeDrivenDataModelProvider & provider) override;
 
-    // Clusters::DeviceEnergyManagement::Delegate
-    Protocols::InteractionModel::Status PowerAdjustRequest(const int64_t power, const uint32_t duration,
-                                                           Clusters::DeviceEnergyManagement::AdjustmentCauseEnum cause) override;
-    Protocols::InteractionModel::Status CancelPowerAdjustRequest() override;
-    Protocols::InteractionModel::Status
-    StartTimeAdjustRequest(const uint32_t requestedStartTime, Clusters::DeviceEnergyManagement::AdjustmentCauseEnum cause) override;
-    Protocols::InteractionModel::Status PauseRequest(const uint32_t duration,
-                                                     Clusters::DeviceEnergyManagement::AdjustmentCauseEnum cause) override;
-    Protocols::InteractionModel::Status ResumeRequest() override;
-    Protocols::InteractionModel::Status ModifyForecastRequest(
-        const uint32_t forecastID,
-        const DataModel::DecodableList<Clusters::DeviceEnergyManagement::Structs::SlotAdjustmentStruct::Type> & slotAdjustments,
-        Clusters::DeviceEnergyManagement::AdjustmentCauseEnum cause) override;
-    Protocols::InteractionModel::Status RequestConstraintBasedForecast(
-        const DataModel::DecodableList<Clusters::DeviceEnergyManagement::Structs::ConstraintsStruct::Type> & constraints,
-        Clusters::DeviceEnergyManagement::AdjustmentCauseEnum cause) override;
-    Protocols::InteractionModel::Status CancelRequest() override;
-    Protocols::InteractionModel::Status
-    PowerRangeAdjustRequest(const Optional<int64_t> minPower, const Optional<int64_t> maxPower, const uint32_t duration,
-                            Clusters::DeviceEnergyManagement::AdjustmentCauseEnum cause) override;
-    Protocols::InteractionModel::Status CancelPowerRangeAdjustRequest() override;
-
-    Clusters::DeviceEnergyManagement::ESATypeEnum GetESAType() override;
-    bool GetESACanGenerate() override;
-    Clusters::DeviceEnergyManagement::ESAStateEnum GetESAState() override;
-    int64_t GetAbsMinPower() override;
-    int64_t GetAbsMaxPower() override;
-    Clusters::DeviceEnergyManagement::OptOutStateEnum GetOptOutState() override;
-    const DataModel::Nullable<Clusters::DeviceEnergyManagement::Structs::PowerAdjustCapabilityStruct::Type> &
-    GetPowerAdjustmentCapability() override;
-    const DataModel::Nullable<Clusters::DeviceEnergyManagement::Structs::ForecastStruct::Type> & GetForecast() override;
-    const DataModel::Nullable<Clusters::DeviceEnergyManagement::Structs::PowerRangeAdjustStruct::Type> &
-    GetPowerRangeAdjustment() override;
-    CHIP_ERROR SetESAState(Clusters::DeviceEnergyManagement::ESAStateEnum state) override;
-
     // Public getters for programmatic control
+    using SingleEndpoint::GetEndpointId;
+
     Clusters::IdentifyCluster & IdentifyCluster() { return mIdentifyCluster.Cluster(); }
     Clusters::DeviceEnergyManagementCluster & EnergyManagementCluster() { return mDemCluster.Cluster(); }
 
-private:
-    CHIP_ERROR SetPowerAdjustmentCause(Clusters::DeviceEnergyManagement::PowerAdjustReasonEnum cause);
+protected:
+    const Config & GetConfig() const { return mConfig; }
 
+    /// Reports a change of an attribute of the Device Energy Management cluster.
+    /// The device reports nothing until it is registered, so this is a no-op then.
+    CHIP_ERROR NotifyAttributeChanged(AttributeId attributeId) const;
+
+private:
     TimerDelegate & mTimerDelegate;
+    Delegate & mDelegate;
     Config mConfig;
-    CodeDrivenDataModelProvider * mProvider                  = nullptr;
-    Clusters::DeviceEnergyManagement::ESAStateEnum mESAState = Clusters::DeviceEnergyManagement::ESAStateEnum::kOnline;
-    DataModel::Nullable<Clusters::DeviceEnergyManagement::Structs::PowerAdjustCapabilityStruct::Type> mPowerAdjustmentCapability;
-    DataModel::Nullable<Clusters::DeviceEnergyManagement::Structs::ForecastStruct::Type> mForecast;
-    DataModel::Nullable<Clusters::DeviceEnergyManagement::Structs::PowerRangeAdjustStruct::Type> mPowerRangeAdjustment;
+    CodeDrivenDataModelProvider * mProvider = nullptr;
 
     LazyRegisteredServerCluster<Clusters::IdentifyCluster> mIdentifyCluster;
     LazyRegisteredServerCluster<Clusters::DeviceEnergyManagementCluster> mDemCluster;

@@ -14,3 +14,12 @@ source_set("device-energy-management") {
     "${chip_root}/zzz_generated/app-common/devices:devices",
   ]
 }
+
+source_set("simulated") {
+  sources = [
+    "impl/SimulatedEnergyManagement.cpp",
+    "impl/SimulatedEnergyManagement.h",
+  ]
+
+  public_deps = [ ":device-energy-management" ]
+}
