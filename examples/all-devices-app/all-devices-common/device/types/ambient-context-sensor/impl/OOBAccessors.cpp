@@ -14,13 +14,17 @@
  *    limitations under the License.
  */
 
-#pragma once
-
-#include <device/types/ambient-context-sensor/AmbientContextSensor.h>
-#include <oob-accessors/OOBAccessorRegistry.h>
+#include "OOBAccessors.h"
+#include "LoggingAmbientContextSensor.h"
+#include <lib/support/CodeUtils.h>
+#include <oob-accessors/clusters/AmbientContextOOBAccessor.h>
 
 namespace chip::app {
 
-void RegisterOOBAccessors(AmbientContextSensor & device, OOBAccessorRegistry & registry);
+void RegisterOOBAccessors(Clusters::AmbientContextSensing::LoggingAmbientContextSensor & device, OOBAccessorRegistry & registry)
+{
+    LogErrorOnFailure(registry.Register(std::make_unique<AmbientContextOOBAccessor>(
+        device.AmbientContextSensingCluster(), device.AmbientSensingUnionCluster(), device.GetEndpointId())));
+}
 
 } // namespace chip::app

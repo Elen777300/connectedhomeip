@@ -1,5 +1,4 @@
 /*
- *
  *    Copyright (c) 2026 Project CHIP Authors
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,9 +16,14 @@
 #pragma once
 
 #include <app/clusters/ambient-context-sensing-server/AmbientContextSensingCluster.h>
+#include <app/clusters/ambient-sensing-union-server/AmbientSensingUnionCluster.h>
+#include <app/clusters/service-area-server/ServiceAreaCluster.h>
 #include <data-model-providers/codedriven/CodeDrivenDataModelProvider.h>
+#include <device/capabilities/service-area/impl/LoggingServiceAreaStorageDelegate.h>
 #include <device/types/ambient-context-sensor/AmbientContextSensor.h>
 #include <lib/support/TimerDelegate.h>
+
+#include <memory>
 
 namespace chip::app::Clusters::AmbientContextSensing {
 
@@ -28,14 +32,14 @@ namespace chip::app::Clusters::AmbientContextSensing {
  *
  * This class serves as a simple example of an ambient context sensor.
  */
-class LoggingAmbientContextSensor : public AmbientContextSensor, public AmbientContextSensingDelegate
+class LoggingAmbientContextSensor : public ServiceArea::LoggingServiceAreaStorageDelegate,
+                                    public AmbientContextSensingDelegate,
+                                    public ServiceArea::Delegate,
+                                    public AmbientContextSensor
 {
 public:
-    LoggingAmbientContextSensor(TimerDelegate & timerDelegate);
+    explicit LoggingAmbientContextSensor(TimerDelegate & timerDelegate);
     ~LoggingAmbientContextSensor() override = default;
-
-    CHIP_ERROR Register(EndpointId endpoint, CodeDrivenDataModelProvider & provider, EndpointComposition composition = {}) override;
-    void Unregister(CodeDrivenDataModelProvider & provider) override;
 
     SemanticTagType * GetAmbientContextTypeSupportedBuf(size_t size) override;
     CHIP_ERROR SetPredictedActivity(const Span<PredictedActivityType> & predictedActivityList) override;
@@ -45,6 +49,16 @@ public:
     CHIP_ERROR DelDetection(AmbientContextSensed * pitem) override;
     uint64_t GetEpochNow() override;
 
+    // ServiceArea::Delegate
+    bool IsSetSelectedAreasAllowed(MutableCharSpan & statusText) override;
+    bool IsValidSelectAreasSet(const Span<const uint32_t> & selectedAreas, ServiceArea::SelectAreasStatus & locationStatus,
+                               MutableCharSpan & statusText) override;
+    bool IsSupportedAreasChangeAllowed() override { return true; }
+    bool IsSupportedMapChangeAllowed() override { return true; }
+
+    Clusters::AmbientContextSensingCluster & AmbientContextSensingCluster() { return mAmbientContextSensingCluster.Cluster(); }
+    Clusters::AmbientSensingUnionClusterT<> & AmbientSensingUnionCluster() { return mAmbientSensingUnionCluster.Cluster(); }
+
     // Use the smaller value for not consuming too much resources
     static constexpr uint8_t kMaxACTypeSupportedForLog       = 20;
     static constexpr uint8_t kMaxPredictedActivityForLog     = 3;
@@ -52,6 +66,10 @@ public:
     static constexpr BitFlags<Feature> kFeatureAllForLog{ Feature::kHumanActivity,        Feature::kObjectCounting,
                                                           Feature::kObjectIdentification, Feature::kSoundIdentification,
                                                           Feature::kPredictedActivity,    Feature::kSensorFusion };
+
+protected:
+    CHIP_ERROR RegisterOptionalClusters(EndpointId endpoint, CodeDrivenDataModelProvider & provider) override;
+    void UnregisterOptionalClusters(CodeDrivenDataModelProvider & provider) override;
 
 private:
     SemanticTagType mAmbientContextTypeSupportedBuf[kMaxACTypeSupportedForLog];
@@ -61,6 +79,9 @@ private:
 
     // From spec, constraint of AmbientContextType is 1 to SimultaneousDetectionLimit.
     std::unique_ptr<AmbientContextSensed> mAmbientContextTypeList[kMaxSimultaneousDetectionLimit];
+
+    LazyRegisteredServerCluster<Clusters::AmbientContextSensingCluster> mAmbientContextSensingCluster;
+    LazyRegisteredServerCluster<Clusters::AmbientSensingUnionClusterT<>> mAmbientSensingUnionCluster;
 };
 
 } // namespace chip::app::Clusters::AmbientContextSensing

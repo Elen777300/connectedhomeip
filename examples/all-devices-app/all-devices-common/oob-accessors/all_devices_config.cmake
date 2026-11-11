@@ -42,7 +42,7 @@ if(ALL_DEVICES_APP_ENABLE_OOB_ACCESSORS)
         "${ALL_DEVICES_COMMON_DIR}/oob-accessors/clusters/OccupancyOOBAccessor.cpp"
         "${ALL_DEVICES_COMMON_DIR}/oob-accessors/clusters/OnOffOOBAccessor.cpp"
         "${ALL_DEVICES_COMMON_DIR}/oob-accessors/clusters/RvcOOBAccessor.cpp"
-        "${ALL_DEVICES_COMMON_DIR}/device/types/ambient-context-sensor/OOBAccessors.cpp"
+        "${ALL_DEVICES_COMMON_DIR}/device/types/ambient-context-sensor/impl/OOBAccessors.cpp"
         "${ALL_DEVICES_COMMON_DIR}/device/types/boolean-state-sensor/OOBAccessors.cpp"
         "${ALL_DEVICES_COMMON_DIR}/device/types/dimmable-light/OOBAccessors.cpp"
         "${ALL_DEVICES_COMMON_DIR}/device/types/dimmable-plug-in-unit/OOBAccessors.cpp"
