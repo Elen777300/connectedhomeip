@@ -17,13 +17,93 @@
 
 #include <device/types/battery-storage/impl/SimulatedBatteryStorage.h>
 
+#include <lib/support/CodeUtils.h>
 #include <lib/support/logging/CHIPLogging.h>
 
 namespace chip::app {
 
+namespace {
+
+using DemFeature = Clusters::DeviceEnergyManagement::Feature;
+using EsaType    = Clusters::DeviceEnergyManagement::ESATypeEnum;
+
+// Battery Storage rev 2 component tags use the Power Source namespace (Grid / Battery).
+const EndpointComposition::SemanticTag kGridComponentTag[] = {
+    { .mfgCode     = DataModel::NullNullable,
+      .namespaceID = to_underlying(Clusters::Globals::SemanticTagNamespaceId::kPowerSource),
+      .tag         = 0x01 },
+};
+const EndpointComposition::SemanticTag kBatteryComponentTag[] = {
+    { .mfgCode     = DataModel::NullNullable,
+      .namespaceID = to_underlying(Clusters::Globals::SemanticTagNamespaceId::kPowerSource),
+      .tag         = 0x03 },
+};
+
+EndpointComposition ChildComposition(EndpointId parent, Span<const EndpointComposition::SemanticTag> tags)
+{
+    EndpointComposition composition = EndpointComposition::WithParent(parent);
+    composition.tagList             = tags;
+    return composition;
+}
+
+SimulatedEnergyManagement::Config BatteryStorageEnergyManagementConfig()
+{
+    return SimulatedEnergyManagement::Config{
+        .featureFlags   = BitMask<DemFeature>(DemFeature::kPowerAdjustment),
+        .esaType        = EsaType::kBatteryStorage,
+        .esaCanGenerate = true,
+    };
+}
+
+} // namespace
+
 SimulatedBatteryStorage::SimulatedBatteryStorage(const Context & context) :
-    BatteryStorage(context), mTimerDelegate(context.timerDelegate)
+    mTimerDelegate(context.timerDelegate), mEnergyManagement(context.timerDelegate, BatteryStorageEnergyManagementConfig()),
+    mGridElectricalSensor(context.timerDelegate, context.testEventTriggerDelegate, {}, SimulatedElectricalSensor::Role::kGrid),
+    mBatteryElectricalSensor(context.timerDelegate, context.testEventTriggerDelegate, {},
+                             SimulatedElectricalSensor::Role::kBattery),
+    mGridPowerSource("Battery storage grid connection"_span, Clusters::PowerSource::WiredCurrentTypeEnum::kAc, 0),
+    mBatteryPowerSource("Battery storage pack"_span, Clusters::PowerSource::BatReplaceabilityEnum::kNotReplaceable,
+                        context.timerDelegate, 1, BatteryPowerSource::ChargingCapability::kRechargeable)
 {}
+
+CHIP_ERROR SimulatedBatteryStorage::RegisterParts(EndpointIdAllocator & allocator, CodeDrivenDataModelProvider & provider)
+{
+    ReturnErrorOnFailure(mEnergyManagement.Register(allocator.Allocate(), provider, EndpointComposition::WithParent(mEndpointId)));
+    ReturnErrorOnFailure(
+        mGridElectricalSensor.Register(allocator.Allocate(), provider, ChildComposition(mEndpointId, Span(kGridComponentTag))));
+    ReturnErrorOnFailure(mBatteryElectricalSensor.Register(allocator.Allocate(), provider,
+                                                           ChildComposition(mEndpointId, Span(kBatteryComponentTag))));
+    ReturnErrorOnFailure(
+        mGridPowerSource.Register(allocator.Allocate(), provider, ChildComposition(mEndpointId, Span(kGridComponentTag))));
+    ReturnErrorOnFailure(
+        mBatteryPowerSource.Register(allocator.Allocate(), provider, ChildComposition(mEndpointId, Span(kBatteryComponentTag))));
+    return CHIP_NO_ERROR;
+}
+
+void SimulatedBatteryStorage::UnregisterParts(CodeDrivenDataModelProvider & provider)
+{
+    if (mBatteryPowerSource.GetEndpointId() != kInvalidEndpointId)
+    {
+        mBatteryPowerSource.Unregister(provider);
+    }
+    if (mGridPowerSource.GetEndpointId() != kInvalidEndpointId)
+    {
+        mGridPowerSource.Unregister(provider);
+    }
+    if (mBatteryElectricalSensor.GetEndpointId() != kInvalidEndpointId)
+    {
+        mBatteryElectricalSensor.Unregister(provider);
+    }
+    if (mGridElectricalSensor.GetEndpointId() != kInvalidEndpointId)
+    {
+        mGridElectricalSensor.Unregister(provider);
+    }
+    if (mEnergyManagement.GetEndpointId() != kInvalidEndpointId)
+    {
+        mEnergyManagement.Unregister(provider);
+    }
+}
 
 CHIP_ERROR SimulatedBatteryStorage::RegisterOptionalClusters(EndpointId endpoint, CodeDrivenDataModelProvider & provider)
 {

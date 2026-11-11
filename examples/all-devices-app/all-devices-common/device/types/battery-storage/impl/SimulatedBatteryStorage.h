@@ -17,28 +17,55 @@
 
 #pragma once
 
+#include <app/TestEventTriggerDelegate.h>
 #include <app/clusters/identify-server/IdentifyCluster.h>
 #include <device/types/battery-storage/BatteryStorage.h>
+#include <device/types/device-energy-management/impl/SimulatedEnergyManagement.h>
+#include <device/types/electrical-sensor/impl/SimulatedElectricalSensor.h>
+#include <device/types/power-source/BatteryPowerSource.h>
+#include <device/types/power-source/WiredPowerSource.h>
+#include <lib/support/TimerDelegate.h>
 
 namespace chip::app {
 
-/// Simulated Battery Storage with optional Identify on the parent endpoint.
+/// Simulated Battery Storage: parent endpoint with Identify, plus the mandatory composed
+/// Device Energy Management, Electrical Sensor and Power Source endpoint pairs.
 class SimulatedBatteryStorage : public BatteryStorage
 {
 public:
-    using Context = BatteryStorage::Context;
+    struct Context
+    {
+        TimerDelegate & timerDelegate;
+        TestEventTriggerDelegate & testEventTriggerDelegate;
+    };
 
     explicit SimulatedBatteryStorage(const Context & context);
     ~SimulatedBatteryStorage() override = default;
 
     Clusters::IdentifyCluster & IdentifyCluster() { return mIdentifyCluster.Cluster(); }
 
+    SimulatedEnergyManagement & GetEnergyManagement() { return mEnergyManagement; }
+    SimulatedElectricalSensor & GetGridElectricalSensor() { return mGridElectricalSensor; }
+    SimulatedElectricalSensor & GetBatteryElectricalSensor() { return mBatteryElectricalSensor; }
+    WiredPowerSource & GetGridPowerSource() { return mGridPowerSource; }
+    BatteryPowerSource & GetBatteryPowerSource() { return mBatteryPowerSource; }
+
 protected:
+    CHIP_ERROR RegisterParts(EndpointIdAllocator & allocator, CodeDrivenDataModelProvider & provider) override;
+    void UnregisterParts(CodeDrivenDataModelProvider & provider) override;
+
     CHIP_ERROR RegisterOptionalClusters(EndpointId endpoint, CodeDrivenDataModelProvider & provider) override;
     void UnregisterOptionalClusters(CodeDrivenDataModelProvider & provider) override;
 
 private:
     TimerDelegate & mTimerDelegate;
+
+    SimulatedEnergyManagement mEnergyManagement;
+    SimulatedElectricalSensor mGridElectricalSensor;
+    SimulatedElectricalSensor mBatteryElectricalSensor;
+    WiredPowerSource mGridPowerSource;
+    BatteryPowerSource mBatteryPowerSource;
+
     LazyRegisteredServerCluster<Clusters::IdentifyCluster> mIdentifyCluster;
 };
 

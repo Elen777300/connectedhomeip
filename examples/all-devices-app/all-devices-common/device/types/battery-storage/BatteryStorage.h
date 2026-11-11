@@ -17,26 +17,19 @@
 
 #pragma once
 
-#include <app/TestEventTriggerDelegate.h>
+#include <data-model-providers/codedriven/CodeDrivenDataModelProvider.h>
 #include <device/api/Interface.h>
-#include <device/types/device-energy-management/EnergyManagement.h>
-#include <device/types/electrical-sensor/impl/SimulatedElectricalSensor.h>
-#include <device/types/power-source/BatteryPowerSource.h>
-#include <device/types/power-source/WiredPowerSource.h>
-#include <lib/support/TimerDelegate.h>
+#include <device/api/allocator/EndpointIdAllocator.h>
 
 namespace chip::app {
 
-/// Battery Storage device type (0x0018) rev 2 parent with mandatory composed endpoints.
+/// Battery Storage device type (0x0018) rev 2 parent endpoint.
+///
+/// The composed endpoints (Device Energy Management, Electrical Sensor and Power Source pairs)
+/// are registered by the implementation through RegisterParts().
 class BatteryStorage : public DeviceInterface
 {
 public:
-    struct Context
-    {
-        TimerDelegate & timerDelegate;
-        TestEventTriggerDelegate & testEventTriggerDelegate;
-    };
-
     ~BatteryStorage() override = default;
 
     CHIP_ERROR Register(EndpointIdAllocator & allocator, CodeDrivenDataModelProvider & provider,
@@ -45,32 +38,19 @@ public:
 
     EndpointId GetEndpointId() const { return mEndpointId; }
 
-    EnergyManagement & GetEnergyManagement() { return mEnergyManagement; }
-    SimulatedElectricalSensor & GetGridElectricalSensor() { return mGridElectricalSensor; }
-    SimulatedElectricalSensor & GetBatteryElectricalSensor() { return mBatteryElectricalSensor; }
-    WiredPowerSource & GetGridPowerSource() { return mGridPowerSource; }
-    BatteryPowerSource & GetBatteryPowerSource() { return mBatteryPowerSource; }
-
 protected:
-    explicit BatteryStorage(const Context & context);
+    BatteryStorage();
+
+    virtual CHIP_ERROR RegisterParts(EndpointIdAllocator & allocator, CodeDrivenDataModelProvider & provider) = 0;
+    virtual void UnregisterParts(CodeDrivenDataModelProvider & provider)                                      = 0;
 
     virtual CHIP_ERROR RegisterOptionalClusters(EndpointId endpoint, CodeDrivenDataModelProvider & provider)
     {
         return CHIP_NO_ERROR;
     }
-
     virtual void UnregisterOptionalClusters(CodeDrivenDataModelProvider & provider) {}
 
-private:
-    void UnregisterComposedEndpoints(CodeDrivenDataModelProvider & provider);
-
     EndpointId mEndpointId = kInvalidEndpointId;
-
-    EnergyManagement mEnergyManagement;
-    SimulatedElectricalSensor mGridElectricalSensor;
-    SimulatedElectricalSensor mBatteryElectricalSensor;
-    WiredPowerSource mGridPowerSource;
-    BatteryPowerSource mBatteryPowerSource;
 };
 
 } // namespace chip::app
