@@ -17,38 +17,14 @@
 #include <device/types/device-energy-management/EnergyManagement.h>
 #include <devices/Types.h>
 
-using namespace chip::app::Clusters::DeviceEnergyManagement;
-
-namespace {
-
-constexpr Structs::PowerAdjustStruct::Type kDefaultPowerAdjustEntry = {
-    .minPower    = 0,
-    .maxPower    = 1000,
-    .minDuration = 0,
-    .maxDuration = 3600,
-};
-
-} // namespace
-
 namespace chip::app {
 
-EnergyManagement::EnergyManagement(TimerDelegate & timerDelegate) : EnergyManagement(timerDelegate, Config{}) {}
+EnergyManagement::EnergyManagement(const Context & context) : EnergyManagement(context, Config{}) {}
 
-EnergyManagement::EnergyManagement(TimerDelegate & timerDelegate, Config config) :
+EnergyManagement::EnergyManagement(const Context & context, Config config) :
     SingleEndpoint(Span<const DataModel::DeviceTypeEntry>(&Device::Type::kDeviceEnergyManagement, 1)),
-    mTimerDelegate(timerDelegate), mConfig(config)
-{
-    if (!mConfig.featureFlags.Has(Feature::kPowerAdjustment))
-    {
-        return;
-    }
-
-    Structs::PowerAdjustCapabilityStruct::Type capabilityStruct;
-    capabilityStruct.powerAdjustCapability.SetNonNull(
-        DataModel::List<const Structs::PowerAdjustStruct::Type>(&kDefaultPowerAdjustEntry, 1));
-    capabilityStruct.cause = PowerAdjustReasonEnum::kNoAdjustment;
-    mPowerAdjustmentCapability.SetNonNull(capabilityStruct);
-}
+    mTimerDelegate(context.timerDelegate), mDelegate(context.delegate), mConfig(config)
+{}
 
 CHIP_ERROR EnergyManagement::Register(EndpointId endpoint, CodeDrivenDataModelProvider & provider, EndpointComposition composition)
 {
@@ -61,7 +37,7 @@ CHIP_ERROR EnergyManagement::Register(EndpointId endpoint, CodeDrivenDataModelPr
     mIdentifyCluster.Create(Clusters::IdentifyCluster::Config(endpoint, mTimerDelegate));
     ReturnErrorOnFailure(provider.AddCluster(mIdentifyCluster.Registration()));
 
-    Clusters::DeviceEnergyManagementCluster::Config config(endpoint, mConfig.featureFlags, *this);
+    Clusters::DeviceEnergyManagementCluster::Config config(endpoint, mConfig.featureFlags, mDelegate);
     mDemCluster.Create(config);
     ReturnErrorOnFailure(provider.AddCluster(mDemCluster.Registration()));
 
@@ -73,11 +49,6 @@ CHIP_ERROR EnergyManagement::Register(EndpointId endpoint, CodeDrivenDataModelPr
 void EnergyManagement::Unregister(CodeDrivenDataModelProvider & provider)
 {
     mProvider = nullptr;
-    mESAState = ESAStateEnum::kOnline;
-    if (!mPowerAdjustmentCapability.IsNull())
-    {
-        mPowerAdjustmentCapability.Value().cause = PowerAdjustReasonEnum::kNoAdjustment;
-    }
 
     UnregisterDescriptor(provider);
 
@@ -94,139 +65,11 @@ void EnergyManagement::Unregister(CodeDrivenDataModelProvider & provider)
     }
 }
 
-Protocols::InteractionModel::Status EnergyManagement::PowerAdjustRequest(const int64_t power, const uint32_t duration,
-                                                                         AdjustmentCauseEnum cause)
+CHIP_ERROR EnergyManagement::NotifyAttributeChanged(AttributeId attributeId) const
 {
-    VerifyOrReturnValue(SetESAState(ESAStateEnum::kPowerAdjustActive) == CHIP_NO_ERROR,
-                        Protocols::InteractionModel::Status::Failure);
-    VerifyOrReturnValue(SetPowerAdjustmentCause(AdjustmentCauseToPowerAdjustReason(cause)) == CHIP_NO_ERROR,
-                        Protocols::InteractionModel::Status::Failure);
-    return Protocols::InteractionModel::Status::Success;
-}
-
-Protocols::InteractionModel::Status EnergyManagement::CancelPowerAdjustRequest()
-{
-    VerifyOrReturnValue(SetESAState(ESAStateEnum::kOnline) == CHIP_NO_ERROR, Protocols::InteractionModel::Status::Failure);
-    VerifyOrReturnValue(SetPowerAdjustmentCause(PowerAdjustReasonEnum::kNoAdjustment) == CHIP_NO_ERROR,
-                        Protocols::InteractionModel::Status::Failure);
-    return Protocols::InteractionModel::Status::Success;
-}
-
-Protocols::InteractionModel::Status EnergyManagement::StartTimeAdjustRequest(const uint32_t requestedStartTime,
-                                                                             AdjustmentCauseEnum cause)
-{
-    return Protocols::InteractionModel::Status::Success;
-}
-
-Protocols::InteractionModel::Status EnergyManagement::PauseRequest(const uint32_t duration, AdjustmentCauseEnum cause)
-{
-    return Protocols::InteractionModel::Status::Success;
-}
-
-Protocols::InteractionModel::Status EnergyManagement::ResumeRequest()
-{
-    return Protocols::InteractionModel::Status::Success;
-}
-
-Protocols::InteractionModel::Status
-EnergyManagement::ModifyForecastRequest(const uint32_t forecastID,
-                                        const DataModel::DecodableList<Structs::SlotAdjustmentStruct::Type> & slotAdjustments,
-                                        AdjustmentCauseEnum cause)
-{
-    return Protocols::InteractionModel::Status::Success;
-}
-
-Protocols::InteractionModel::Status
-EnergyManagement::RequestConstraintBasedForecast(const DataModel::DecodableList<Structs::ConstraintsStruct::Type> & constraints,
-                                                 AdjustmentCauseEnum cause)
-{
-    return Protocols::InteractionModel::Status::Success;
-}
-
-Protocols::InteractionModel::Status EnergyManagement::CancelRequest()
-{
-    return Protocols::InteractionModel::Status::Success;
-}
-
-Protocols::InteractionModel::Status EnergyManagement::PowerRangeAdjustRequest(const Optional<int64_t> minPower,
-                                                                              const Optional<int64_t> maxPower,
-                                                                              const uint32_t duration, AdjustmentCauseEnum cause)
-{
-    return Protocols::InteractionModel::Status::Success;
-}
-
-Protocols::InteractionModel::Status EnergyManagement::CancelPowerRangeAdjustRequest()
-{
-    return Protocols::InteractionModel::Status::Success;
-}
-
-ESATypeEnum EnergyManagement::GetESAType()
-{
-    return mConfig.esaType;
-}
-
-bool EnergyManagement::GetESACanGenerate()
-{
-    return mConfig.esaCanGenerate;
-}
-
-ESAStateEnum EnergyManagement::GetESAState()
-{
-    return mESAState;
-}
-
-int64_t EnergyManagement::GetAbsMinPower()
-{
-    return kDefaultPowerAdjustEntry.minPower;
-}
-
-int64_t EnergyManagement::GetAbsMaxPower()
-{
-    return kDefaultPowerAdjustEntry.maxPower;
-}
-
-OptOutStateEnum EnergyManagement::GetOptOutState()
-{
-    return OptOutStateEnum::kNoOptOut;
-}
-
-const DataModel::Nullable<Structs::PowerAdjustCapabilityStruct::Type> & EnergyManagement::GetPowerAdjustmentCapability()
-{
-    return mPowerAdjustmentCapability;
-}
-
-const DataModel::Nullable<Structs::ForecastStruct::Type> & EnergyManagement::GetForecast()
-{
-    return mForecast;
-}
-
-const DataModel::Nullable<Structs::PowerRangeAdjustStruct::Type> & EnergyManagement::GetPowerRangeAdjustment()
-{
-    return mPowerRangeAdjustment;
-}
-
-CHIP_ERROR EnergyManagement::SetESAState(ESAStateEnum state)
-{
-    VerifyOrReturnValue(mESAState != state, CHIP_NO_ERROR);
-    mESAState = state;
-
     VerifyOrReturnValue(mProvider != nullptr, CHIP_NO_ERROR);
-    mProvider->NotifyAttributeChanged({ GetEndpointId(), Id, Attributes::ESAState::Id },
+    mProvider->NotifyAttributeChanged({ GetEndpointId(), Clusters::DeviceEnergyManagement::Id, attributeId },
                                       DataModel::AttributeChangeType::kReportable);
-
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR EnergyManagement::SetPowerAdjustmentCause(PowerAdjustReasonEnum cause)
-{
-    VerifyOrReturnError(!mPowerAdjustmentCapability.IsNull(), CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnValue(mPowerAdjustmentCapability.Value().cause != cause, CHIP_NO_ERROR);
-    mPowerAdjustmentCapability.Value().cause = cause;
-
-    VerifyOrReturnValue(mProvider != nullptr, CHIP_NO_ERROR);
-    mProvider->NotifyAttributeChanged({ GetEndpointId(), Id, Attributes::PowerAdjustmentCapability::Id },
-                                      DataModel::AttributeChangeType::kReportable);
-
     return CHIP_NO_ERROR;
 }
 
