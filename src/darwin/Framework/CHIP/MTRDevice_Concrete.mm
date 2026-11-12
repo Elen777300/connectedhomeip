@@ -19,6 +19,7 @@
 #import <os/lock.h>
 
 #import "MTRAsyncWorkQueue.h"
+#import "MTRAttributeChangesOmittedCheck.h"
 #import "MTRAttributeSpecifiedCheck.h"
 #import "MTRBaseClusters.h"
 #import "MTRBaseDevice_Internal.h"
@@ -290,6 +291,46 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
     MTRDeviceWorkItemDuplicateReadTypeID = 1,
 };
 
+namespace {
+// These cover spec attributes, private clusters and private extensions of spec clusters.
+BOOL AttributeIsSpecified(ClusterId clusterID, AttributeId attributeID)
+{
+    return MTRAttributeIsSpecified(clusterID, attributeID) || MTRPrivateAttributeIsSpecified(clusterID, attributeID);
+}
+
+BOOL AttributeHasChangesOmittedQuality(ClusterId clusterID, AttributeId attributeID)
+{
+    return MTRAttributeHasChangesOmittedQuality(clusterID, attributeID) || MTRPrivateAttributeHasChangesOmittedQuality(clusterID, attributeID);
+}
+
+// Attributes that had the Changes Omitted quality in earlier revisions of their
+// cluster.  A device that implements one of those revisions might not report
+// changes to them.
+struct FormerlyChangesOmittedAttribute {
+    ClusterId clusterID;
+    AttributeId attributeID;
+    // The first ClusterRevision in which the attribute does not have the Changes Omitted quality.
+    uint16_t firstClusterRevisionWithoutChangesOmitted;
+};
+
+constexpr FormerlyChangesOmittedAttribute kFormerlyChangesOmittedAttributes[] = {
+    // Power Source cluster revision 3 replaced the C quality on these with the Q quality.
+    { MTRClusterIDTypePowerSourceID, MTRAttributeIDTypeClusterPowerSourceAttributeBatPercentRemainingID, 3 },
+    { MTRClusterIDTypePowerSourceID, MTRAttributeIDTypeClusterPowerSourceAttributeBatTimeRemainingID, 3 },
+    { MTRClusterIDTypePowerSourceID, MTRAttributeIDTypeClusterPowerSourceAttributeBatTimeToFullChargeID, 3 },
+};
+
+const FormerlyChangesOmittedAttribute * FindFormerlyChangesOmittedAttribute(ClusterId clusterID, AttributeId attributeID)
+{
+    for (auto & attribute : kFormerlyChangesOmittedAttributes) {
+        if (attribute.clusterID == clusterID && attribute.attributeID == attributeID) {
+            return &attribute;
+        }
+    }
+    return nullptr;
+}
+} // anonymous namespace
+
 // Minimal time to wait since our last resubscribe failure before we will allow
 // a read attempt to prod our subscription.
 //
@@ -408,10 +449,13 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
 - (void)unitTestSubscriptionCallbackDeleteForDevice:(MTRDevice *)device;
 - (void)unitTestSubscriptionResetForDevice:(MTRDevice *)device;
 - (void)unitTestSubscriptionSetupStartedForDevice:(MTRDevice *)device;
+- (void)unitTestReadClientCreatedForDevice:(MTRDevice *)device;
+- (void)unitTestInternalStateChangedForDevice:(MTRDevice *)device state:(MTRInternalDeviceState)state;
 - (void)unitTestSetUTCTimeInvokedForDevice:(MTRDevice *)device error:(NSError * _Nullable)error;
 - (BOOL)unitTestTimeUpdateShortDelayIsZero:(MTRDevice *)device;
 - (NSNumber *)unitTestTimeSynchronizationLossDetectionCadenceOverride:(MTRDevice *)device;
 - (void)unitTestTimeSynchronizationLossDetectedForDevice:(MTRDevice *)device;
+- (void)unitTestSubscriptionReattemptDispatchedForDevice:(MTRDevice *)device;
 @end
 #endif
 
@@ -442,6 +486,8 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
     // _setupSubscriptionWithReason or via the auto-resubscribe behavior
     // of the ReadClient).  Nil if we have had no such failures.
     NSDate * _Nullable _lastSubscriptionFailureTime;
+    // Bumped each time a reattempt is scheduled; a timer whose captured value no longer matches was superseded.
+    NSUInteger _subscriptionReattemptGeneration;
     MTRDeviceConnectivityMonitor * _connectivityMonitor;
 
     // This boolean keeps track of any device configuration changes received in an attribute report.
@@ -1432,6 +1478,14 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
         }];
         /* END DRAGONS */
 
+#ifdef DEBUG
+        [self _callFirstDelegateSynchronouslyWithBlock:^(id testDelegate) {
+            if ([testDelegate respondsToSelector:@selector(unitTestInternalStateChangedForDevice:state:)]) {
+                [testDelegate unitTestInternalStateChangedForDevice:self state:state];
+            }
+        }];
+#endif
+
         [self _notifyDelegateOfPrivateInternalPropertiesChanges];
     }
 }
@@ -1839,6 +1893,7 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
     }
 
     self.reattemptingSubscription = YES;
+    NSUInteger reattemptGeneration = ++_subscriptionReattemptGeneration;
 
     NSTimeInterval secondsToWait;
     if (_lastSubscriptionAttemptWait < MTRDEVICE_SUBSCRIPTION_ATTEMPT_MIN_WAIT_SECONDS) {
@@ -1869,16 +1924,38 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
 
     // Call _reattemptSubscriptionNowIfNeededWithReason when timer fires - if subscription is
     // in a better state at that time this will be a no-op.
+    BOOL deviceUsesThread = [self _deviceUsesThread];
     mtr_weakify(self);
     auto resubscriptionBlock = ^(MTRAsyncWorkCompletionBlock _Nullable poolWorkCompletion) {
         mtr_strongify(self);
         VerifyOrReturn(self, MTR_LOG_DEBUG("_doHandleSubscriptionReset resubscriptionBlock called with nil MTRDevice"));
+
+        {
+            std::lock_guard lock(self->_lock);
+            if (self->_subscriptionReattemptGeneration != reattemptGeneration) {
+                MTR_LOG("%@ ignoring superseded subscription reattempt timer before dispatch", self);
+                if (deviceUsesThread) {
+                    // The pool ready handler calls this block right after taking the slot on the device
+                    // queue, so the slot is ours or already cleared.
+                    [self _clearSubscriptionPoolWorkIfOwnedBy:poolWorkCompletion];
+                }
+                return;
+            }
+        }
 
         [self->_deviceController asyncDispatchToMatterQueue:^{
             mtr_strongify(self);
             VerifyOrReturn(self, MTR_LOG_DEBUG("_doHandleSubscriptionReset resubscriptionBlock asyncDispatchToMatterQueue called back with nil MTRDevice"));
 
             std::lock_guard lock(self->_lock);
+            if (self->_subscriptionReattemptGeneration != reattemptGeneration) {
+                MTR_LOG("%@ ignoring superseded subscription reattempt timer on the Matter queue", self);
+                // Note: we claim the subscription pool work slot right before resubscriptionBlock, is called.
+                // We already checked the generation during the initial call to resubscriptionBlock, so if it's
+                // changed since then, whatever changed the generation also cleared our subscription pool
+                // work and we don't need to do that here.
+                return;
+            }
             [self _reattemptSubscriptionNowIfNeededWithReason:@"got subscription reset"];
         }
             errorHandler:^(NSError * _Nonnull error) {
@@ -1890,10 +1967,18 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
                 std::lock_guard lock(self->_lock);
                 [self _clearSubscriptionPoolWorkIfOwnedBy:poolWorkCompletion];
             }];
+
+#ifdef DEBUG
+        [self _lockAndCallDelegatesWithBlock:^(id testDelegate) {
+            if ([testDelegate respondsToSelector:@selector(unitTestSubscriptionReattemptDispatchedForDevice:)]) {
+                [testDelegate unitTestSubscriptionReattemptDispatchedForDevice:self];
+            }
+        }];
+#endif
     };
 
     int64_t resubscriptionDelayNs = static_cast<int64_t>(secondsToWait * NSEC_PER_SEC);
-    if ([self _deviceUsesThread]) {
+    if (deviceUsesThread) {
         // For Thread-enabled devices, schedule the _reattemptSubscriptionNowIfNeededWithReason call to run in the subscription pool
         NSString * description = [NSString stringWithFormat:@"MTRDevice resubscription (%p)", self];
         [self _scheduleSubscriptionPoolWork:resubscriptionBlock skipIfResetSince:nil inNanoseconds:resubscriptionDelayNs description:description];
@@ -2053,13 +2138,20 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
         return NO;
     }
 
-    if (self.highestObservedEventNumberNeedsPersisting) {
-        [self _storePersistedDeviceData];
+    // No cluster data to persist; store the device data on its own if it changed.
+    if (!_clusterDataToPersist.count) {
+        if (self.highestObservedEventNumberNeedsPersisting) {
+            [self _storePersistedDeviceData];
+        }
+        return NO;
     }
 
-    // Nothing to persist
-    if (!_clusterDataToPersist.count) {
-        return NO;
+    // Device data that changed goes into the same storage write as the
+    // cluster data, so that one persistence round is one write.
+    NSDictionary<NSString *, id> * deviceData = nil;
+    if (self.highestObservedEventNumberNeedsPersisting) {
+        // The datastore is known to exist here (checked above), so clearing the flag can't lose data.
+        deviceData = [self _deviceDataToPersist];
     }
 
     MTR_LOG("%@ Storing cluster information (data version and attributes) count: %lu", self, static_cast<unsigned long>(_clusterDataToPersist.count));
@@ -2067,7 +2159,7 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
     // storage implementation, which will try to read them later.  Make sure
     // we snapshot the state here instead of handing out live copies.
     NSDictionary<MTRClusterPath *, MTRDeviceClusterData *> * clusterData = [self _clusterDataToPersistSnapshot];
-    [self._concreteController.controllerDataStore storeClusterData:clusterData forNodeID:_nodeID];
+    [self._concreteController.controllerDataStore storeClusterData:clusterData deviceData:deviceData forNodeID:_nodeID];
     for (MTRClusterPath * clusterPath in _clusterDataToPersist) {
         [_persistedClusterData setObject:_clusterDataToPersist[clusterPath] forKey:clusterPath];
         [_persistedClusters addObject:clusterPath];
@@ -2446,14 +2538,16 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
             if ([interestedEndpointIDNumber isEqualToNumber:attributePath.endpoint]) {
                 return YES;
             }
-        } else if ([interestedPath isKindOfClass:[MTRClusterPath class]]) {
-            MTRClusterPath * interestedClusterPath = interestedPath;
-            if ([interestedClusterPath.cluster isEqualToNumber:attributePath.cluster]) {
+        } else if ([interestedPath isKindOfClass:[MTRAttributePath class]]) {
+            // Check this before MTRClusterPath: MTRAttributePath is a subclass of MTRClusterPath.
+            MTRAttributePath * interestedAttributePath = interestedPath;
+            // Compare the fields, not with isEqual:, which also requires the same class and so never matches a subclass instance.
+            if ([interestedAttributePath.endpoint isEqualToNumber:attributePath.endpoint] && [interestedAttributePath.cluster isEqualToNumber:attributePath.cluster] && [interestedAttributePath.attribute isEqualToNumber:attributePath.attribute]) {
                 return YES;
             }
-        } else if ([interestedPath isKindOfClass:[MTRAttributePath class]]) {
-            MTRAttributePath * interestedAttributePath = interestedPath;
-            if (([interestedAttributePath.cluster isEqualToNumber:attributePath.cluster]) && ([interestedAttributePath.attribute isEqualToNumber:attributePath.attribute])) {
+        } else if ([interestedPath isKindOfClass:[MTRClusterPath class]]) {
+            MTRClusterPath * interestedClusterPath = interestedPath;
+            if ([interestedClusterPath.endpoint isEqualToNumber:attributePath.endpoint] && [interestedClusterPath.cluster isEqualToNumber:attributePath.cluster]) {
                 return YES;
             }
         }
@@ -2513,7 +2607,7 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
 {
     // Note: %p to avoid double-logging the whole big structure; can be matched
     // up to where we receive the attribute report, which logs pointer value and
-    // actual value.
+    // count.  _getAttributesToReportWithReportedValues logs each attribute.
     MTR_LOG("%@ handling attribute report %p, fromSubscription: %@", self, attributeReport, MTR_YES_NO(isFromSubscription));
 
     std::lock_guard lock(_lock);
@@ -2535,7 +2629,8 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
         mtr_strongify(self);
         VerifyOrReturn(self, MTR_LOG_DEBUG("_injectAttributeReport asyncDispatchToMatterQueue called back with nil MTRDevice"));
 
-        MTR_LOG("%@ injected attribute report (%p) %@", self, attributeReport, attributeReport);
+        // _getAttributesToReportWithReportedValues logs each attribute.
+        MTR_LOG("%@ injected attribute report (%p) with %lu attributes", self, attributeReport, static_cast<unsigned long>(attributeReport.count));
         [self _handleReportBegin];
         dispatch_async(self.queue, ^{
             mtr_strongify(self);
@@ -2605,14 +2700,16 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
             if ([interestedEndpointIDNumber isEqualToNumber:eventPath.endpoint]) {
                 return YES;
             }
-        } else if ([interestedPath isKindOfClass:[MTRClusterPath class]]) {
-            MTRClusterPath * interestedClusterPath = interestedPath;
-            if ([interestedClusterPath.cluster isEqualToNumber:eventPath.cluster]) {
+        } else if ([interestedPath isKindOfClass:[MTREventPath class]]) {
+            // Check this before MTRClusterPath: MTREventPath is a subclass of MTRClusterPath.
+            MTREventPath * interestedEventPath = interestedPath;
+            // Compare the fields, not with isEqual:, which also requires the same class and so never matches a subclass instance.
+            if ([interestedEventPath.endpoint isEqualToNumber:eventPath.endpoint] && [interestedEventPath.cluster isEqualToNumber:eventPath.cluster] && [interestedEventPath.event isEqualToNumber:eventPath.event]) {
                 return YES;
             }
-        } else if ([interestedPath isKindOfClass:[MTREventPath class]]) {
-            MTREventPath * interestedEventPath = interestedPath;
-            if (([interestedEventPath.cluster isEqualToNumber:eventPath.cluster]) && ([interestedEventPath.event isEqualToNumber:eventPath.event])) {
+        } else if ([interestedPath isKindOfClass:[MTRClusterPath class]]) {
+            MTRClusterPath * interestedClusterPath = interestedPath;
+            if ([interestedClusterPath.endpoint isEqualToNumber:eventPath.endpoint] && [interestedClusterPath.cluster isEqualToNumber:eventPath.cluster]) {
                 return YES;
             }
         }
@@ -2663,7 +2760,11 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
     } else {
         reportToReturn = [NSMutableArray array];
     }
+    NSUInteger eventIndex = 0;
     for (NSDictionary<NSString *, id> * eventDict in eventReport) {
+        MTR_LOG_DEBUG("%@ event report (%p[%lu]) %@", self, eventReport, static_cast<unsigned long>(eventIndex), eventDict);
+        ++eventIndex;
+
         // Whenever a StartUp event is received, reset the estimated start time
         //   New subscription case
         //     - Starts Unreachable
@@ -2944,7 +3045,7 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
     if (value != nil
         && isFromSubscription
         && !_receivingPrimingReport
-        && AttributeHasChangesOmittedQuality(path)) {
+        && [self _hasChangesOmittedQualityForPath:path]) {
         // Do not persist new values for Changes Omitted Quality (aka C Quality)
         // attributes unless they're part of a Priming Report or from a read response.
         // (removals are OK)
@@ -3223,7 +3324,8 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
                                        self.lastSubscriptionActiveTime = [NSDate now];
                                    }
 
-                                   MTR_LOG("%@ got attribute report (%p) %@", self, value, value);
+                                   // _getAttributesToReportWithReportedValues logs each attribute.
+                                   MTR_LOG("%@ got attribute report (%p) with %lu attributes", self, value, static_cast<unsigned long>(value.count));
                                    dispatch_async(self.queue, ^{
                                        mtr_strongify(self);
                                        VerifyOrReturn(self, MTR_LOG_DEBUG("_setupSubscriptionWithReason subscription attribute report async to device queue called back with nil MTRDevice"));
@@ -3244,7 +3346,8 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
                                        self.lastSubscriptionActiveTime = [NSDate now];
                                    }
 
-                                   MTR_LOG("%@ got event report %@", self, value);
+                                   // _handleEventReport logs each event.
+                                   MTR_LOG("%@ got event report (%p) with %lu events", self, value, static_cast<unsigned long>(value.count));
                                    dispatch_async(self.queue, ^{
                                        mtr_strongify(self);
                                        VerifyOrReturn(self, MTR_LOG_DEBUG("_setupSubscriptionWithReason subscription event report async to device queue called back with nil MTRDevice"));
@@ -3441,6 +3544,20 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
                            callback->AdoptReadClient(std::move(readClient));
                            callback->AdoptClusterStateCache(std::move(clusterStateCache));
                            callback.release();
+
+#ifdef DEBUG
+                           dispatch_async(self.queue, ^{
+                               mtr_strongify(self);
+                               VerifyOrReturn(self, MTR_LOG_DEBUG("_setupSubscriptionWithReason ReadClient created hook called back with nil MTRDevice"));
+
+                               std::lock_guard lock(self->_lock);
+                               [self _callFirstDelegateSynchronouslyWithBlock:^(id testDelegate) {
+                                   if ([testDelegate respondsToSelector:@selector(unitTestReadClientCreatedForDevice:)]) {
+                                       [testDelegate unitTestReadClientCreatedForDevice:self];
+                                   }
+                               }];
+                           });
+#endif
                        }];
 
     // Set up connectivity monitoring in case network becomes routable after any part of the subscription process goes into backoff retries.
@@ -3469,139 +3586,56 @@ typedef NS_ENUM(NSUInteger, MTRDeviceWorkItemDuplicateTypeID) {
 
 #pragma mark Device Interactions
 
-// Helper function to determine whether an attribute has "Changes Omitted" quality, which indicates that past the priming report in
-// a subscription, this attribute is not expected to be reported when its value changes
-//   * TODO: xml+codegen version to replace this hardcoded list.
-static BOOL AttributeHasChangesOmittedQuality(MTRAttributePath * attributePath)
-{
-    switch (attributePath.cluster.unsignedLongValue) {
-    case MTRClusterEthernetNetworkDiagnosticsID:
-        switch (attributePath.attribute.unsignedLongValue) {
-        case MTRClusterEthernetNetworkDiagnosticsAttributePacketRxCountID:
-        case MTRClusterEthernetNetworkDiagnosticsAttributePacketTxCountID:
-        case MTRClusterEthernetNetworkDiagnosticsAttributeTxErrCountID:
-        case MTRClusterEthernetNetworkDiagnosticsAttributeCollisionCountID:
-        case MTRClusterEthernetNetworkDiagnosticsAttributeOverrunCountID:
-        case MTRClusterEthernetNetworkDiagnosticsAttributeCarrierDetectID:
-        case MTRClusterEthernetNetworkDiagnosticsAttributeTimeSinceResetID:
-            return YES;
-        default:
-            return NO;
-        }
-    case MTRClusterGeneralDiagnosticsID:
-        switch (attributePath.attribute.unsignedLongValue) {
-        case MTRClusterGeneralDiagnosticsAttributeUpTimeID:
-        case MTRClusterGeneralDiagnosticsAttributeTotalOperationalHoursID:
-            return YES;
-        default:
-            return NO;
-        }
-    case MTRClusterThreadNetworkDiagnosticsID:
-        switch (attributePath.attribute.unsignedLongValue) {
-        case MTRClusterThreadNetworkDiagnosticsAttributeOverrunCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeDetachedRoleCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeChildRoleCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRouterRoleCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeLeaderRoleCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeAttachAttemptCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributePartitionIdChangeCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeBetterPartitionAttachAttemptCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeParentChangeCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxTotalCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxUnicastCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxBroadcastCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxAckRequestedCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxAckedCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxNoAckRequestedCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxDataCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxDataPollCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxBeaconCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxBeaconRequestCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxOtherCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxRetryCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxDirectMaxRetryExpiryCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxIndirectMaxRetryExpiryCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxErrCcaCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxErrAbortCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeTxErrBusyChannelCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxTotalCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxUnicastCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxBroadcastCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxDataCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxDataPollCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxBeaconCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxBeaconRequestCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxOtherCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxAddressFilteredCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxDestAddrFilteredCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxDuplicatedCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxErrNoFrameCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxErrUnknownNeighborCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxErrInvalidSrcAddrCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxErrSecCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxErrFcsCountID:
-        case MTRClusterThreadNetworkDiagnosticsAttributeRxErrOtherCountID:
-            return YES;
-        default:
-            return NO;
-        }
-    case MTRClusterWiFiNetworkDiagnosticsID:
-        switch (attributePath.attribute.unsignedLongValue) {
-        case MTRClusterWiFiNetworkDiagnosticsAttributeRssiID:
-        case MTRClusterWiFiNetworkDiagnosticsAttributeBeaconLostCountID:
-        case MTRClusterWiFiNetworkDiagnosticsAttributeBeaconRxCountID:
-        case MTRClusterWiFiNetworkDiagnosticsAttributePacketMulticastRxCountID:
-        case MTRClusterWiFiNetworkDiagnosticsAttributePacketMulticastTxCountID:
-        case MTRClusterWiFiNetworkDiagnosticsAttributePacketUnicastRxCountID:
-        case MTRClusterWiFiNetworkDiagnosticsAttributePacketUnicastTxCountID:
-        case MTRClusterWiFiNetworkDiagnosticsAttributeCurrentMaxRateID:
-        case MTRClusterWiFiNetworkDiagnosticsAttributeOverrunCountID:
-            return YES;
-        default:
-            return NO;
-        }
-    case MTRClusterOperationalCredentialsID:
-        switch (attributePath.attribute.unsignedLongValue) {
-        case MTRClusterOperationalCredentialsAttributeNOCsID:
-        case MTRClusterOperationalCredentialsAttributeTrustedRootCertificatesID:
-            return YES;
-        default:
-            return NO;
-        }
-    case MTRClusterPowerSourceID:
-        switch (attributePath.attribute.unsignedLongValue) {
-        case MTRClusterPowerSourceAttributeWiredAssessedInputVoltageID:
-        case MTRClusterPowerSourceAttributeWiredAssessedInputFrequencyID:
-        case MTRClusterPowerSourceAttributeWiredAssessedCurrentID:
-        case MTRClusterPowerSourceAttributeBatVoltageID:
-        case MTRClusterPowerSourceAttributeBatPercentRemainingID:
-        case MTRClusterPowerSourceAttributeBatTimeRemainingID:
-        case MTRClusterPowerSourceAttributeBatTimeToFullChargeID:
-        case MTRClusterPowerSourceAttributeBatChargingCurrentID:
-            return YES;
-        default:
-            return NO;
-        }
-    case MTRClusterTimeSynchronizationID:
-        switch (attributePath.attribute.unsignedLongValue) {
-        case MTRClusterTimeSynchronizationAttributeUTCTimeID:
-        case MTRClusterTimeSynchronizationAttributeLocalTimeID:
-            return YES;
-        default:
-            return NO;
-        }
-    default:
-        return NO;
-    }
-}
-
 BOOL MTRAttributeReadNeedsReadThrough(MTRAttributePath * attributePath, MTRReadParams * _Nullable params)
 {
-    if (MTRAttributeIsSpecified(attributePath.cluster.unsignedIntValue, attributePath.attribute.unsignedIntValue)) {
-        return AttributeHasChangesOmittedQuality(attributePath);
+    ClusterId clusterID = attributePath.cluster.unsignedIntValue;
+    AttributeId attributeID = attributePath.attribute.unsignedIntValue;
+    if (AttributeIsSpecified(clusterID, attributeID)) {
+        return AttributeHasChangesOmittedQuality(clusterID, attributeID) || FindFormerlyChangesOmittedAttribute(clusterID, attributeID) != nullptr;
     }
 
     return params != nil && !params.assumeUnknownAttributesReportable;
+}
+
+// Whether the attribute has the Changes Omitted quality in the cluster revision
+// the device has reported.
+- (BOOL)_hasChangesOmittedQualityForPath:(MTRAttributePath *)attributePath
+{
+    os_unfair_lock_assert_owner(&self->_lock);
+
+    ClusterId clusterID = attributePath.cluster.unsignedIntValue;
+    AttributeId attributeID = attributePath.attribute.unsignedIntValue;
+    if (AttributeHasChangesOmittedQuality(clusterID, attributeID)) {
+        return YES;
+    }
+
+    auto * formerlyChangesOmitted = FindFormerlyChangesOmittedAttribute(clusterID, attributeID);
+    if (formerlyChangesOmitted == nullptr) {
+        return NO;
+    }
+
+    auto * revisionPath = [MTRAttributePath attributePathWithEndpointID:attributePath.endpoint
+                                                              clusterID:attributePath.cluster
+                                                            attributeID:@(MTRAttributeIDTypeGlobalAttributeClusterRevisionID)];
+    MTRDeviceDataValueDictionary revision = [self _cachedAttributeValueForPath:revisionPath];
+
+    // A device that has not reported its revision yet might implement one in
+    // which the attribute has the Changes Omitted quality.
+    if (![revision[MTRTypeKey] isEqual:MTRUnsignedIntegerValueType]) {
+        return YES;
+    }
+    NSNumber * revisionNumber = revision[MTRValueKey];
+    return revisionNumber.unsignedLongLongValue < formerlyChangesOmitted->firstClusterRevisionWithoutChangesOmitted;
+}
+
+- (BOOL)_attributeReadNeedsReadThroughForPath:(MTRAttributePath *)attributePath params:(MTRReadParams * _Nullable)params
+{
+    if (FindFormerlyChangesOmittedAttribute(attributePath.cluster.unsignedIntValue, attributePath.attribute.unsignedIntValue) == nullptr) {
+        return MTRAttributeReadNeedsReadThrough(attributePath, params);
+    }
+
+    std::lock_guard lock(_lock);
+    return [self _hasChangesOmittedQualityForPath:attributePath];
 }
 
 - (NSDictionary<NSString *, id> * _Nullable)readAttributeWithEndpointID:(NSNumber *)endpointID
@@ -3613,7 +3647,7 @@ BOOL MTRAttributeReadNeedsReadThrough(MTRAttributePath * attributePath, MTRReadP
                                                                            clusterID:clusterID
                                                                          attributeID:attributeID];
 
-    BOOL hasChangesOmittedQuality = MTRAttributeReadNeedsReadThrough(attributePath, params);
+    BOOL hasChangesOmittedQuality = [self _attributeReadNeedsReadThroughForPath:attributePath params:params];
 
     // Return current known / expected value right away
     NSDictionary<NSString *, id> * attributeValueToReturn = [self _attributeValueDictionaryForAttributePath:attributePath];
@@ -3714,8 +3748,8 @@ BOOL MTRAttributeReadNeedsReadThrough(MTRAttributePath * attributePath, MTRReadP
                             VerifyOrReturn(self, MTR_LOG_DEBUG("readAttributeWithEndpointID base device completion called back with nil MTRDevice"));
                             if (values) {
                                 // Since the format is the same data-value dictionary, this looks like an
-                                // attribute report
-                                MTR_LOG("Read attribute work item [%llu] result: (%p) %@  [0x%016llX:%@:0x%llX:0x%llX]", workItemID, values, values, nodeID.unsignedLongLongValue, endpointID, clusterID.unsignedLongLongValue, attributeID.unsignedLongLongValue);
+                                // attribute report.  _getAttributesToReportWithReportedValues logs each attribute.
+                                MTR_LOG("Read attribute work item [%llu] result: (%p) with %lu attributes  [0x%016llX:%@:0x%llX:0x%llX]", workItemID, values, static_cast<unsigned long>(values.count), nodeID.unsignedLongLongValue, endpointID, clusterID.unsignedLongLongValue, attributeID.unsignedLongLongValue);
                                 [self _handleAttributeReport:values fromSubscription:NO];
                             }
 
@@ -4053,7 +4087,7 @@ BOOL MTRAttributeReadNeedsReadThrough(MTRAttributePath * attributePath, MTRReadP
                                   MTR_LOG("Invoke work item [%llu] received command response: %@ error: %@", workItemID, values, error);
                                   // TODO: This 5-retry cap is very arbitrary.
                                   // TODO: Should there be some sort of backoff here?
-                                  if (error != nil && error.domain == MTRInteractionErrorDomain && error.code == MTRInteractionErrorCodeBusy && retryCount < 5) {
+                                  if (error != nil && [error.domain isEqualToString:MTRInteractionErrorDomain] && error.code == MTRInteractionErrorCodeBusy && retryCount < 5) {
                                       workCompletion(MTRAsyncWorkNeedsRetry);
                                       return;
                                   }
@@ -4747,6 +4781,11 @@ static BOOL MTRInvokeCommandCanEncode(MTRCommandWithRequiredResponse * command)
 
     NSMutableArray * attributesToReport = [NSMutableArray array];
     NSMutableArray * attributePathsToReport = [NSMutableArray array];
+    NSUInteger valueCount = 0;
+    NSUInteger errorCount = 0;
+    NSUInteger noDataCount = 0;
+    NSUInteger sameAsReadCacheCount = 0;
+    NSUInteger expectedValuePresentCount = 0;
     for (NSDictionary<NSString *, id> * attributeResponseValue in reportedAttributeValues) {
         MTRAttributePath * attributePath = attributeResponseValue[MTRAttributePathKey];
         MTRDeviceDataValueDictionary _Nullable attributeDataValue = attributeResponseValue[MTRDataKey];
@@ -4756,6 +4795,7 @@ static BOOL MTRInvokeCommandCanEncode(MTRCommandWithRequiredResponse * command)
         // sanity check either data value or error must exist
         if (!attributeDataValue && !attributeError) {
             MTR_LOG("%@ report %@ no data value or error: %@", self, attributePath, attributeResponseValue);
+            ++noDataCount;
             continue;
         }
 
@@ -4765,6 +4805,7 @@ static BOOL MTRInvokeCommandCanEncode(MTRCommandWithRequiredResponse * command)
         // if this is an error, report and purge cache
         if (attributeError) {
             shouldReportAttribute = YES;
+            ++errorCount;
             previousValue = [self _cachedAttributeValueForPath:attributePath];
             MTR_LOG_ERROR("%@ report %@ error %@ purge expected value %@ read cache %@", self, attributePath, attributeError,
                 _expectedValueCache[attributePath], previousValue);
@@ -4855,14 +4896,19 @@ static BOOL MTRInvokeCommandCanEncode(MTRCommandWithRequiredResponse * command)
                 shouldReportAttribute = YES;
             }
 
-            if (!shouldReportAttribute) {
+            if (shouldReportAttribute) {
+                ++valueCount;
+                MTR_LOG_DEBUG("%@ report %@ value %@", self, attributePath, attributeDataValue);
+            } else {
                 // If an expected value exists, the attribute will not be reported at this time.
                 // When the expected value interval expires, the correct value will be reported,
                 // if needed.
                 if (expectedValue) {
-                    MTR_LOG("%@ report %@ value %@ filtered - expected value still present", self, attributePath, attributeDataValue);
+                    ++expectedValuePresentCount;
+                    MTR_LOG_DEBUG("%@ report %@ value %@ filtered - expected value still present", self, attributePath, attributeDataValue);
                 } else {
-                    MTR_LOG("%@ report %@ value %@ filtered - same as read cache", self, attributePath, attributeDataValue);
+                    ++sameAsReadCacheCount;
+                    MTR_LOG_DEBUG("%@ report %@ value %@ filtered - same as read cache", self, attributePath, attributeDataValue);
                 }
             }
 
@@ -4900,12 +4946,14 @@ static BOOL MTRInvokeCommandCanEncode(MTRCommandWithRequiredResponse * command)
     }
 
     // Log each changed path on a separate line, so log line truncation does not
-    // hide which attributes actually changed in this report.  Note that for
-    // things that did not change we log them one per line above in the
-    // !shouldReportAttribute case.
+    // hide which attributes actually changed in this report.
     for (MTRAttributePath * path in attributePathsToReport) {
         MTR_LOG("%@ report from reported values %@", self, path);
     }
+
+    MTR_LOG("%@ report of %lu attributes: %lu values, %lu errors, %lu same as read cache, %lu expected value still present, %lu no data", self,
+        static_cast<unsigned long>(reportedAttributeValues.count), static_cast<unsigned long>(valueCount), static_cast<unsigned long>(errorCount), static_cast<unsigned long>(sameAsReadCacheCount),
+        static_cast<unsigned long>(expectedValuePresentCount), static_cast<unsigned long>(noDataCount));
 
     return attributesToReport;
 }
@@ -5029,15 +5077,10 @@ static BOOL MTRInvokeCommandCanEncode(MTRCommandWithRequiredResponse * command)
     }
 }
 
-- (void)_storePersistedDeviceData
+// Returns the device data to store, and marks it as no longer needing to be persisted.
+- (NSDictionary<NSString *, id> *)_deviceDataToPersist
 {
     os_unfair_lock_assert_owner(&self->_lock);
-
-    auto datastore = self._concreteController.controllerDataStore;
-    if (datastore == nil) {
-        // No way to store.
-        return;
-    }
 
     NSMutableDictionary<NSString *, id> * data = [NSMutableDictionary dictionary];
     if (_estimatedSubscriptionLatency != nil) {
@@ -5050,7 +5093,20 @@ static BOOL MTRInvokeCommandCanEncode(MTRCommandWithRequiredResponse * command)
 
     MTR_LOG_DEBUG("%@ _storePersistedDeviceData: %@", self, data);
 
-    [datastore storeDeviceData:[data copy] forNodeID:self.nodeID];
+    return [data copy];
+}
+
+- (void)_storePersistedDeviceData
+{
+    os_unfair_lock_assert_owner(&self->_lock);
+
+    auto datastore = self._concreteController.controllerDataStore;
+    if (datastore == nil) {
+        // No way to store.
+        return;
+    }
+
+    [datastore storeDeviceData:[self _deviceDataToPersist] forNodeID:self.nodeID];
 }
 
 #ifdef DEBUG
